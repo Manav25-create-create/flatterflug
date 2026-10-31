@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Flatterflug 15 Biome</title>
+<title>Flatterflug 20 Biome</title>
 <style>
   /* Ein dunkles Spielfenster, mittig, mit 16 px Seitenrand; Farben als Token */
   :root {
@@ -108,20 +108,22 @@
 
 // ============================================================
 // CONFIG: alle Tuning-Werte. Logische Höhe fest 600, logische Breite
-// passt sich dem Seitenverhältnis an (360 bis 1000). Physik mit festem
+// passt sich dem Seitenverhältnis an (360 bis 1400, wählbar Hoch/Quer). Physik mit festem
 // 60-FPS-Schritt, Einheiten px pro Frame.
 // ============================================================
 const CONFIG = {
   H: 600,
   W_MIN: 360,
-  W_MAX: 1000,
+  W_MAX: 1400,                    // breite Monitore: mehr Weitblick
+  W_PORTRAIT: [360, 450],         // Hochformat: schmale Spalte
+  W_LANDSCAPE: [760, 1400],       // Querformat: mindestens so breit
   GROUND_H: 56,
 
   // Grundphysik, pro Level überschreibbar (physicsOverride)
   GRAVITY: 0.45,
   FLAP_IMPULSE: -8,
   MAX_FALL_SPEED: 12,
-  SCROLL_SPEED: 2.5,              // über alle 15 Level konstant
+  SCROLL_SPEED: 2.5,              // Grundtempo; Wind (ab Level 8) macht es zeitweise schneller oder langsamer
 
   // Rohre
   PIPE_WIDTH: 60,
@@ -132,8 +134,11 @@ const CONFIG = {
   PIPE_SPAWN_AHEAD: 140,
   PIPE_CAP_H: 24,
   PIPE_CAP_OVERHANG: 4,           // rein optisch, Hitbox bleibt PIPE_WIDTH
-  PIPES_BASE: 12,                 // Level n braucht 12 + 2*(n-1) Rohre
+  PIPES_BASE: 10,                 // Level n braucht 10 + 2*(n-1) Rohre, das letzte Level 50
   PIPES_STEP: 2,
+  PIPES_LAST: 50,
+  CP_EXTRA: 200,                  // Fortsetzen am Checkpoint: so viel mehr Anlauf vor dem nächsten Rohr
+  TILT_MARGIN: 14,                // kippende Paare: zusätzlicher Abstand zu Decke und Boden
 
   // Vogel
   BIRD_W: 34,
@@ -160,10 +165,10 @@ const CONFIG = {
   BOSS_FALL_GRAVITY: 0.35,
   RUSH_HITS: 2,                   // Boss-Ansturm im letzten Level: Treffer pro Boss
   RUSH_INTRO_FRAMES: 70,          // Einflug des nächsten Bosses im Ansturm
-  RUSH_CHECKPOINT: 8,             // Leicht/Mittel: nach dem 8. Boss geht es bei einem Absturz ab Boss 9 weiter
+  RUSH_CHECKPOINTS: [7, 13],      // Leicht/Mittel: nach Boss 7 und Boss 13 geht es bei einem Absturz dort weiter
   ATTACK_COOLDOWN: 90,
   TELEGRAPH_FRAMES: 30,
-  TELEGRAPH_LONG: 60,             // flächige und säulenartige Angriffe (Muster 7, 9, 13)
+  TELEGRAPH_LONG: 60,             // flächige und säulenartige Angriffe
   PROJECTILE_SPEED: 4.0,
   AIM_VY_MAX: 5,
   WAVE_GAP: 150,
@@ -175,11 +180,15 @@ const CONFIG = {
   DEATH_PANEL_DELAY: 40,
   RESTART_LOCK: 20,
   INTRO_LOCK: 18,
-  CHECKPOINT_FROM: 8,             // Index: ab Level 9 Checkpoint bei der Hälfte
+  CHECKPOINT_FROM: 8,             // Index: ab Level 9 Checkpoint bei der Hälfte (nicht auf Schwer)
   CHECKPOINT_BANNER: 120,
 
-  // Fähigkeiten (ab Level 3): wirken sofort 5 Sekunden lang
+  // Fähigkeiten (ab Level 3): wirken sofort 5 Sekunden lang. Schlechte Kugeln ab Level 5
   ABILITY_FROM: 2,
+  DEBUFF_FROM: [['TEMPO', 4], ['RIESE', 9], ['BLEI', 13]],   // Art, ab Level-Index
+  TEMPO_FACTOR: 1.3,
+  GROW_SCALE: 1.45,
+  LEAD_GRAVITY: 1.3,
   ABILITY_FRAMES: 300,
   SLOW_FACTOR: 0.6,
   SHRINK_SCALE: 0.6,
@@ -193,7 +202,8 @@ const CONFIG = {
   SHAKE_HIT: [6, 20],             // Amplitude, Abklingzeit in Frames
   SHAKE_CEILING: [2, 4],
   CACHE_MAX_SCALE: 4,
-  STORAGE_KEY: 'flatterflug-15-biome-v4',         // Stand v4: Fortschritt und Einstellungen in einem Datensatz
+  STORAGE_KEY: 'flatterflug-20-biome-v5',         // Stand v5: 20 Level, Arrays mit Levelnamen
+  STORAGE_KEY_V4: 'flatterflug-15-biome-v4',      // nur noch lesen (Übernahme per Levelname)
   STORAGE_KEY_V3: 'flatterflug-15-biome-v3',      // nur noch lesen (Übernahme, alte Levelreihenfolge)
   STORAGE_KEY_OLD: 'flatterflug-zehn-biome-v2',   // nur noch lesen (Übernahme)
   SETTINGS_KEY: 'flatterflug-einstellungen',      // Einstellungen bis v3, nur noch lesen
@@ -240,27 +250,44 @@ const PATTERNS = {
   twinwave:  { warn: CONFIG.TELEGRAPH_FRAMES, label: 'Zwei Wellen aus beiden Richtungen' },
   gearroll:  { warn: CONFIG.TELEGRAPH_LONG, label: 'Zahnrad rollt am Boden oder an der Decke' },
   emberrain: { warn: CONFIG.TELEGRAPH_FRAMES, label: 'Glutregen mit sicherer Spalte' },
-  alternate: { warn: CONFIG.TELEGRAPH_FRAMES, label: 'Gezielter Schuss und Welle im Wechsel' }
+  alternate: { warn: CONFIG.TELEGRAPH_FRAMES, label: 'Gezielter Schuss und Welle im Wechsel' },
+  petal:     { warn: CONFIG.TELEGRAPH_FRAMES + 6, label: 'Langsames Blütenblatt, schwebt leicht' },
+  bounce:    { warn: CONFIG.TELEGRAPH_FRAMES, label: 'Muschel prallt einmal am Wasser ab' },
+  zigzag:    { warn: CONFIG.TELEGRAPH_FRAMES, label: 'Blatt im Zickzack: weit ausweichen' },
+  converge:  { warn: CONFIG.TELEGRAPH_FRAMES, label: 'Zwei Steine treffen sich an deiner Stelle' },
+  ticktock:  { warn: CONFIG.TELEGRAPH_FRAMES, label: 'Tick, tack, tick: drei Zahnräder im Takt' }
 };
 
 // ============================================================
 // LEVELS: ein Eintrag pro Biom, sortiert von friedlich zu bedrohlich.
-// Schwierigkeit steigt mit der Position: mehr Rohre, mehr und weitere
-// Bewegung (movingPipes: auf und ab, sidePipes: links und rechts). Die Engine ist levelunabhängig,
-// ein neues Biom ist ein neuer Eintrag aus vorhandenen Bausteinen.
-// Pflichtfelder laut Vorgabe: name, pipeCount, pipeGap, palette (6),
-// hazard {type, params}, physicsOverride, movingPipes, boss, music, skinId.
-// Darstellung: style, sky, layers (drei Parallax-Ebenen), hint.
+// Schwierigkeit steigt mit der Position: mehr Rohre und neue Hindernisse
+// (siehe MECH_PLAN unter der Liste, setzt pipeCount, movingPipes, sidePipes,
+// tiltPipes, wind, dark und hazard). Ein Eintrag: name, pipeGap, palette (6),
+// physicsOverride, boss, music, skinId; Darstellung: style, sky, layers, hint.
 // Palette: skyTop, skyBottom, far, near, pipe, accent.
 // ============================================================
 const LEVELS = [
   {
-    name: 'Wiese', pipeCount: 12, pipeGap: 183,
-    palette: { skyTop: '#6fa9dc', skyBottom: '#f1e4c0', far: '#9cc79a', near: '#5b9a48', pipe: '#6eaf54', accent: '#eebd4a' },
-    hazard: { type: 'none', params: {} },
+    name: 'Blütenhain', pipeGap: 183,
+    palette: { skyTop: '#86bde8', skyBottom: '#fbe3ec', far: '#e3b8d4', near: '#93c27e', pipe: '#d68fb0', accent: '#f4c84f' },
     physicsOverride: {},
-    movingPipes: { share: 0, amplitude: 0, period: 1, motion: 'sine' },
-    sidePipes: { share: 0, amplitude: 0, period: 1 },
+    boss: { pattern: 'petal', name: 'Blütenmotte' },
+    music: { scale: 'majorPent', root: 64, bpm: 92, waves: { lead: 'triangle', bass: 'sine', pad: 'triangle' }, filter: 5600, delayFb: 0.3, reverb: 0.4, perc: 'light', feel: 'bright', seed: 1601 },
+    skinId: 16,
+    ambient: 'pollen',
+    style: { boss: 'moth', pipe: 'stem', ground: 'grass', projectile: 'petal', pipeNoun: 'Blütenstängel' },
+    sky: { body: 'sun', sunX: 0.7, sunY: 110, cirrus: true },
+    layers: [
+      { kind: 'hills', P: 1000, base: 412, amp: 80, freq: 0.004, seed: 161, clouds: true, haze: 0.3, specks: true },
+      { kind: 'hills', P: 1200, base: 474, amp: 50, freq: 0.006, seed: 162, trees: 0.6, fields: true, color: '#9cc884' },
+      { kind: 'props', P: 1400, prop: 'meadow', spacing: 44, seed: 163 }
+    ],
+    hint: 'Flieg durch die Lücken zwischen den Stängeln. Die Decke ist harmlos, nur der Boden nicht.'
+  },
+  {
+    name: 'Wiese', pipeGap: 183,
+    palette: { skyTop: '#6fa9dc', skyBottom: '#f1e4c0', far: '#9cc79a', near: '#5b9a48', pipe: '#6eaf54', accent: '#eebd4a' },
+    physicsOverride: {},
     boss: { pattern: 'aimed', name: 'Hummelkönigin' },
     music: { scale: 'majorPent', root: 60, bpm: 100, waves: { lead: 'triangle', bass: 'triangle', pad: 'triangle' }, filter: 5200, delayFb: 0.24, reverb: 0.3, perc: 'light', feel: 'bright', seed: 101 },
     skinId: 1,
@@ -272,15 +299,12 @@ const LEVELS = [
       { kind: 'hills', P: 1200, base: 470, amp: 56, freq: 0.0065, seed: 12, trees: 0.55, fields: true, color: '#7db368' },
       { kind: 'props', P: 1400, prop: 'meadow', spacing: 46, seed: 13 }
     ],
-    hint: 'Flieg durch die Lücken zwischen den Stängeln. Die Decke ist harmlos, nur der Boden nicht.'
+    hint: 'Leuchtende Kugeln geben dir 5 Sekunden lang eine Fähigkeit. Einfach hindurchfliegen.'
   },
   {
-    name: 'Wolken', pipeCount: 14, pipeGap: 180,
+    name: 'Wolken', pipeGap: 180,
     palette: { skyTop: '#86ace6', skyBottom: '#f6dce6', far: '#c8d4f2', near: '#e9e0f2', pipe: '#b9a5dd', accent: '#f6b77c' },
-    hazard: { type: 'none', params: {} },
     physicsOverride: {},
-    movingPipes: { share: 0.25, amplitude: 24, period: 260, motion: 'sine' },
-    sidePipes: { share: 0, amplitude: 0, period: 1 },
     boss: { pattern: 'arc', name: 'Wolkenwal' },
     music: { scale: 'major', root: 65, bpm: 88, waves: { lead: 'triangle', bass: 'sine', pad: 'triangle' }, filter: 3400, delayFb: 0.36, reverb: 0.55, perc: 'soft', feel: 'soft', seed: 1212 },
     skinId: 12,
@@ -292,15 +316,29 @@ const LEVELS = [
       { kind: 'hang', P: 1200, base: 60, amp: 40, freq: 0.01, seed: 122, clouds: true },
       { kind: 'dunes', P: 1400, base: 520, amp: 24, freq: 0.004, seed: 123 }
     ],
-    hint: 'Einige Wolkensäulen schweben langsam auf und ab. Die Lücke bleibt immer gleich groß.'
+    hint: 'Die Wolkensäulen stehen noch still. Genieß die Aussicht, bald kommt Bewegung ins Spiel.'
   },
   {
-    name: 'Ozean', pipeCount: 16, pipeGap: 168,
+    name: 'Lagune', pipeGap: 179,
+    palette: { skyTop: '#4fb3d9', skyBottom: '#ffe1b3', far: '#86d0c4', near: '#2f9c8f', pipe: '#d9ad6c', accent: '#ff8a65' },
+    physicsOverride: {},
+    boss: { pattern: 'bounce', name: 'Lagunenkrabbe' },
+    music: { scale: 'mixolydian', root: 62, bpm: 98, waves: { lead: 'triangle', bass: 'triangle', pad: 'sine' }, filter: 4600, delayFb: 0.3, reverb: 0.45, perc: 'light', feel: 'bright', swing: 0.08, seed: 1701 },
+    skinId: 17,
+    ambient: 'feathers',
+    style: { boss: 'crab', pipe: 'stem', ground: 'sand', projectile: 'shell', pipeNoun: 'Palmenstamm' },
+    sky: { body: 'sun', sunX: 0.78, sunY: 150, big: true },
+    layers: [
+      { kind: 'dunes', P: 1000, base: 470, amp: 30, freq: 0.004, seed: 171, haze: 0.3 },
+      { kind: 'hills', P: 1200, base: 500, amp: 30, freq: 0.006, seed: 172, color: '#3aa89a' },
+      { kind: 'props', P: 1400, prop: 'meadow', spacing: 80, seed: 173 }
+    ],
+    hint: 'Neu: Manche Palmenstämme fahren langsam auf und ab. Die Lücke bleibt gleich groß.'
+  },
+  {
+    name: 'Ozean', pipeGap: 172,
     palette: { skyTop: '#1b5a82', skyBottom: '#3f9aa9', far: '#2a6d85', near: '#1b4a60', pipe: '#de796a', accent: '#8edece' },
-    hazard: { type: 'none', params: {} },
     physicsOverride: { GRAVITY: 0.28, FLAP_IMPULSE: -6, MAX_FALL_SPEED: 7 },
-    movingPipes: { share: 0.3, amplitude: 26, period: 250, motion: 'sine' },
-    sidePipes: { share: 0, amplitude: 0, period: 1 },
     boss: { pattern: 'riser', name: 'Tiefseeangler' },
     music: { scale: 'lydian', root: 53, bpm: 72, waves: { lead: 'sine', bass: 'sine', pad: 'sine' }, filter: 3000, delayFb: 0.42, reverb: 0.75, perc: 'none', feel: 'deep', seed: 606 },
     skinId: 6,
@@ -312,75 +350,12 @@ const LEVELS = [
       { kind: 'strands', P: 1200, spacing: 40, height: [170, 330], seed: 62 },
       { kind: 'props', P: 1400, prop: 'coral', spacing: 62, seed: 63 }
     ],
-    hint: 'Unter Wasser: weniger Schwerkraft, sanftere Flügelschläge. Leuchtende Kugeln geben dir 5 Sekunden lang eine Fähigkeit.'
+    hint: 'Unter Wasser: weniger Schwerkraft. Neu sind dunkle Kugeln: Sie machen dich schneller, also drüber oder drunter fliegen.'
   },
   {
-    name: 'Dschungel', pipeCount: 18, pipeGap: 177,
-    palette: { skyTop: '#2b5838', skyBottom: '#b2d093', far: '#44744c', near: '#21442b', pipe: '#6b4a2f', accent: '#bfdc62' },
-    hazard: { type: 'none', params: {} },
-    physicsOverride: {},
-    movingPipes: { share: 0.3, amplitude: 28, period: 240, motion: 'sine' },
-    sidePipes: { share: 0.25, amplitude: 14, period: 220 },
-    boss: { pattern: 'diverge', name: 'Schlingchamäleon' },
-    music: { scale: 'dorian', root: 55, bpm: 112, waves: { lead: 'triangle', bass: 'triangle', pad: 'triangle' }, filter: 3600, delayFb: 0.2, reverb: 0.3, perc: 'tribal', feel: 'wood', swing: 0.12, seed: 404 },
-    skinId: 4,
-    ambient: 'leaves',
-    style: { boss: 'chameleon', pipe: 'trunk', ground: 'jungle', projectile: 'seed', pipeNoun: 'Baumstamm' },
-    sky: { body: 'none', rays: true, mist: true },
-    layers: [
-      { kind: 'trunks', P: 1000, spacing: 78, width: [12, 26], seed: 41, haze: 0.3 },
-      { kind: 'hang', P: 1200, base: 86, amp: 54, freq: 0.011, seed: 42, foliage: true, lianas: true },
-      { kind: 'props', P: 1400, prop: 'fern', spacing: 50, seed: 43 }
-    ],
-    hint: 'Neu: Manche Stämme schwanken nach links und rechts. Achte auf den Abstand zum nächsten Stamm.'
-  },
-  {
-    name: 'Wüste', pipeCount: 20, pipeGap: 181,
-    palette: { skyTop: '#6aa0cf', skyBottom: '#f4d8a2', far: '#e3b87c', near: '#c98c4b', pipe: '#d5a167', accent: '#df673d' },
-    hazard: { type: 'wind', params: { every: 240, dur: 90, drift: 0.8, lead: 45 } },
-    physicsOverride: {},
-    movingPipes: { share: 0.35, amplitude: 30, period: 230, motion: 'sine' },
-    sidePipes: { share: 0.2, amplitude: 14, period: 220 },
-    boss: { pattern: 'wave', name: 'Sandskarabäus' },
-    music: { scale: 'phrygDom', root: 52, bpm: 96, waves: { lead: 'sawtooth', bass: 'triangle', pad: 'sawtooth' }, filter: 1500, filterQ: 6, delayFb: 0.3, reverb: 0.3, perc: 'frame', feel: 'narrow', swing: 0.1, seed: 505 },
-    skinId: 5,
-    ambient: 'dust',
-    style: { boss: 'scarab', pipe: 'sandstone', ground: 'sand', projectile: 'sand', pipeNoun: 'Sandsteinsäule' },
-    sky: { body: 'sun', sunX: 0.72, sunY: 128, big: true, haze: true },
-    layers: [
-      { kind: 'dunes', P: 1000, base: 446, amp: 64, freq: 0.003, seed: 51, haze: 0.34 },
-      { kind: 'mesas', P: 1200, base: 492, amp: 136, spacing: 196, seed: 52 },
-      { kind: 'props', P: 1400, prop: 'cactus', spacing: 92, seed: 53 }
-    ],
-    hint: 'Windböen schieben dich vor oder zurück. Flugsand kündigt jede Böe an und zeigt die Richtung.'
-  },
-  {
-    name: 'Sumpf', pipeCount: 22, pipeGap: 176,
-    palette: { skyTop: '#46594a', skyBottom: '#b3bd92', far: '#66785a', near: '#33452f', pipe: '#6f6243', accent: '#cfd76c' },
-    hazard: { type: 'none', params: {} },
-    physicsOverride: {},
-    movingPipes: { share: 0.4, amplitude: 32, period: 220, motion: 'sine' },
-    sidePipes: { share: 0.25, amplitude: 16, period: 210 },
-    boss: { pattern: 'split', name: 'Irrlichtkröte' },
-    music: { scale: 'minorPent', root: 45, bpm: 80, waves: { lead: 'triangle', bass: 'sawtooth', pad: 'triangle' }, filter: 1700, delayFb: 0.34, reverb: 0.45, perc: 'soft', feel: 'sluggish', seed: 909 },
-    skinId: 9,
-    ambient: 'spores',
-    style: { boss: 'toad', pipe: 'trunk', ground: 'jungle', projectile: 'seed', pipeNoun: 'Moorpfahl' },
-    sky: { body: 'sun', sunX: 0.3, sunY: 140, pale: true, haze: true },
-    layers: [
-      { kind: 'trunks', P: 1000, spacing: 90, width: [10, 20], seed: 91, haze: 0.4 },
-      { kind: 'hills', P: 1200, base: 486, amp: 30, freq: 0.006, seed: 92 },
-      { kind: 'props', P: 1400, prop: 'fern', spacing: 60, seed: 93 }
-    ],
-    hint: 'Viele Pfähle treiben auf und ab, einige schwanken zur Seite.'
-  },
-  {
-    name: 'Eis', pipeCount: 24, pipeGap: 176,
+    name: 'Eis', pipeGap: 180,
     palette: { skyTop: '#5f93cc', skyBottom: '#dceaf3', far: '#a3bfdc', near: '#e6eff5', pipe: '#9dcde6', accent: '#4e7dbd' },
-    hazard: { type: 'none', params: {} },
     physicsOverride: {},
-    movingPipes: { share: 0.4, amplitude: 32, period: 215, motion: 'sine' },
-    sidePipes: { share: 0.45, amplitude: 20, period: 200 },
     boss: { pattern: 'salvo3', name: 'Frostgolem' },
     music: { scale: 'major', root: 62, bpm: 86, waves: { lead: 'sine', bass: 'sine', pad: 'sine' }, filter: 5600, delayFb: 0.5, reverb: 0.45, perc: 'sparse', feel: 'bells', seed: 202 },
     skinId: 2,
@@ -392,15 +367,80 @@ const LEVELS = [
       { kind: 'peaks', P: 1200, base: 494, amp: 124, spacing: 118, seed: 22, caps: 0.55, haze: 0.12 },
       { kind: 'props', P: 1400, prop: 'fir', spacing: 58, seed: 23 }
     ],
-    hint: 'Auf dem Eis rutschen die Säulen weit nach links und rechts.'
+    hint: 'Mehr Eissäulen gleiten auf und ab.'
   },
   {
-    name: 'Kristall', pipeCount: 26, pipeGap: 175,
-    palette: { skyTop: '#2c2a5c', skyBottom: '#9a8fd0', far: '#5d5ba3', near: '#36316c', pipe: '#8fd3df', accent: '#ef8fcf' },
-    hazard: { type: 'none', params: {} },
+    name: 'Dschungel', pipeGap: 179,
+    palette: { skyTop: '#2b5838', skyBottom: '#b2d093', far: '#44744c', near: '#21442b', pipe: '#6b4a2f', accent: '#bfdc62' },
     physicsOverride: {},
-    movingPipes: { share: 0.5, amplitude: 34, period: 205, motion: 'sine' },
-    sidePipes: { share: 0.3, amplitude: 18, period: 200 },
+    boss: { pattern: 'diverge', name: 'Schlingchamäleon' },
+    music: { scale: 'dorian', root: 55, bpm: 112, waves: { lead: 'triangle', bass: 'triangle', pad: 'triangle' }, filter: 3600, delayFb: 0.2, reverb: 0.3, perc: 'tribal', feel: 'wood', swing: 0.12, seed: 404 },
+    skinId: 4,
+    ambient: 'leaves',
+    style: { boss: 'chameleon', pipe: 'trunk', ground: 'jungle', projectile: 'seed', pipeNoun: 'Baumstamm' },
+    sky: { body: 'none', rays: true, mist: true },
+    layers: [
+      { kind: 'trunks', P: 1000, spacing: 78, width: [12, 26], seed: 41, haze: 0.3 },
+      { kind: 'hang', P: 1200, base: 86, amp: 54, freq: 0.011, seed: 42, foliage: true, lianas: true },
+      { kind: 'props', P: 1400, prop: 'fern', spacing: 50, seed: 43 }
+    ],
+    hint: 'Fast jeder zweite Stamm bewegt sich jetzt.'
+  },
+  {
+    name: 'Wüste', pipeGap: 185,
+    palette: { skyTop: '#6aa0cf', skyBottom: '#f4d8a2', far: '#e3b87c', near: '#c98c4b', pipe: '#d5a167', accent: '#df673d' },
+    physicsOverride: {},
+    boss: { pattern: 'wave', name: 'Sandskarabäus' },
+    music: { scale: 'phrygDom', root: 52, bpm: 96, waves: { lead: 'sawtooth', bass: 'triangle', pad: 'sawtooth' }, filter: 1500, filterQ: 6, delayFb: 0.3, reverb: 0.3, perc: 'frame', feel: 'narrow', swing: 0.1, seed: 505 },
+    skinId: 5,
+    ambient: 'dust',
+    style: { boss: 'scarab', pipe: 'sandstone', ground: 'sand', projectile: 'sand', pipeNoun: 'Sandsteinsäule' },
+    sky: { body: 'sun', sunX: 0.72, sunY: 128, big: true, haze: true },
+    layers: [
+      { kind: 'dunes', P: 1000, base: 446, amp: 64, freq: 0.003, seed: 51, haze: 0.34 },
+      { kind: 'mesas', P: 1200, base: 492, amp: 136, spacing: 196, seed: 52 },
+      { kind: 'props', P: 1400, prop: 'cactus', spacing: 92, seed: 53 }
+    ],
+    hint: 'Neu: Wind. Rückenwind macht dich schneller, Gegenwind langsamer. Flugsand kündigt jede Böe an.'
+  },
+  {
+    name: 'Herbstwald', pipeGap: 181,
+    palette: { skyTop: '#6f86a8', skyBottom: '#f0c48a', far: '#b8743e', near: '#6f3b22', pipe: '#8a5a36', accent: '#e8642c' },
+    physicsOverride: {},
+    boss: { pattern: 'zigzag', name: 'Pilzkönig' },
+    music: { scale: 'dorian', root: 57, bpm: 100, waves: { lead: 'triangle', bass: 'triangle', pad: 'triangle' }, filter: 3200, delayFb: 0.28, reverb: 0.4, perc: 'soft', feel: 'wood', seed: 1801 },
+    skinId: 18,
+    ambient: 'leaves',
+    style: { boss: 'mushroom', pipe: 'trunk', ground: 'jungle', projectile: 'leaf', pipeNoun: 'Baumstamm' },
+    sky: { body: 'sun', sunX: 0.28, sunY: 150, pale: true, haze: true },
+    layers: [
+      { kind: 'trunks', P: 1000, spacing: 84, width: [12, 24], seed: 181, haze: 0.35 },
+      { kind: 'hills', P: 1200, base: 480, amp: 40, freq: 0.006, seed: 182, trees: 0.7, color: '#9a5a2e' },
+      { kind: 'props', P: 1400, prop: 'fern', spacing: 54, seed: 183 }
+    ],
+    hint: 'Wind und bewegte Stämme kommen jetzt zusammen.'
+  },
+  {
+    name: 'Sumpf', pipeGap: 186,
+    palette: { skyTop: '#46594a', skyBottom: '#b3bd92', far: '#66785a', near: '#33452f', pipe: '#6f6243', accent: '#cfd76c' },
+    physicsOverride: {},
+    boss: { pattern: 'split', name: 'Irrlichtkröte' },
+    music: { scale: 'minorPent', root: 45, bpm: 80, waves: { lead: 'triangle', bass: 'sawtooth', pad: 'triangle' }, filter: 1700, delayFb: 0.34, reverb: 0.45, perc: 'soft', feel: 'sluggish', seed: 909 },
+    skinId: 9,
+    ambient: 'spores',
+    style: { boss: 'toad', pipe: 'trunk', ground: 'jungle', projectile: 'seed', pipeNoun: 'Moorpfahl' },
+    sky: { body: 'sun', sunX: 0.3, sunY: 140, pale: true, haze: true },
+    layers: [
+      { kind: 'trunks', P: 1000, spacing: 90, width: [10, 20], seed: 91, haze: 0.4 },
+      { kind: 'hills', P: 1200, base: 486, amp: 30, freq: 0.006, seed: 92 },
+      { kind: 'props', P: 1400, prop: 'fern', spacing: 60, seed: 93 }
+    ],
+    hint: 'Neu bei den dunklen Kugeln: Manche machen dich größer. Weich ihnen aus.'
+  },
+  {
+    name: 'Kristall', pipeGap: 182,
+    palette: { skyTop: '#2c2a5c', skyBottom: '#9a8fd0', far: '#5d5ba3', near: '#36316c', pipe: '#8fd3df', accent: '#ef8fcf' },
+    physicsOverride: {},
     boss: { pattern: 'shatter', name: 'Prismenwächter' },
     music: { scale: 'lydian', root: 64, bpm: 104, waves: { lead: 'sine', bass: 'triangle', pad: 'sine' }, filter: 7000, delayFb: 0.4, reverb: 0.5, perc: 'light', feel: 'bells', seed: 1111 },
     skinId: 11,
@@ -412,15 +452,29 @@ const LEVELS = [
       { kind: 'spikes', P: 1200, amp: 120, spacing: 90, seed: 112, crystals: true },
       { kind: 'spikes', P: 1400, amp: 60, spacing: 56, seed: 113, crystals: true }
     ],
-    hint: 'Die Kristallsäulen bewegen sich schneller und weiter.'
+    hint: 'Kristallsäulen in Bewegung und kräftiger Wind.'
   },
   {
-    name: 'Höhle', pipeCount: 28, pipeGap: 176,
-    palette: { skyTop: '#2a2231', skyBottom: '#5e4c5f', far: '#4b3d4e', near: '#342a37', pipe: '#8b717b', accent: '#7ee1ce' },
-    hazard: { type: 'darkness', params: { sight: 220 } },
+    name: 'Ruinen', pipeGap: 180,
+    palette: { skyTop: '#3d4a5e', skyBottom: '#c99a6b', far: '#6b6a5c', near: '#3f4234', pipe: '#9a917a', accent: '#e0c060' },
     physicsOverride: {},
-    movingPipes: { share: 0.45, amplitude: 34, period: 210, motion: 'sine' },
-    sidePipes: { share: 0.3, amplitude: 18, period: 200 },
+    boss: { pattern: 'converge', name: 'Steinwächter' },
+    music: { scale: 'phrygian', root: 52, bpm: 96, waves: { lead: 'triangle', bass: 'sawtooth', pad: 'triangle' }, filter: 1800, delayFb: 0.32, reverb: 0.5, perc: 'frame', feel: 'narrow', seed: 1901 },
+    skinId: 19,
+    ambient: 'dust',
+    style: { boss: 'guardian', pipe: 'sandstone', ground: 'sand', projectile: 'rock', pipeNoun: 'Tempelsäule' },
+    sky: { body: 'sun', sunX: 0.3, sunY: 170, pale: true, haze: true },
+    layers: [
+      { kind: 'mesas', P: 1000, base: 460, amp: 120, spacing: 220, seed: 191, haze: 0.3 },
+      { kind: 'trunks', P: 1200, spacing: 100, width: [10, 18], seed: 192 },
+      { kind: 'props', P: 1400, prop: 'fern', spacing: 70, seed: 193 }
+    ],
+    hint: 'Neu: Die Säulen schwanken nach links und rechts. Achte auf den Abstand zur nächsten.'
+  },
+  {
+    name: 'Höhle', pipeGap: 178,
+    palette: { skyTop: '#2a2231', skyBottom: '#5e4c5f', far: '#4b3d4e', near: '#342a37', pipe: '#8b717b', accent: '#7ee1ce' },
+    physicsOverride: {},
     boss: { pattern: 'column', name: 'Grottenspinne' },
     music: { scale: 'minor', root: 52, bpm: 60, waves: { lead: 'sine', bass: 'sine', pad: 'triangle' }, filter: 950, delayFb: 0.55, reverb: 0.6, perc: 'drip', feel: 'sparse', seed: 808 },
     skinId: 8,
@@ -432,15 +486,12 @@ const LEVELS = [
       { kind: 'spikes', P: 1200, amp: 160, spacing: 118, seed: 82, rock: true },
       { kind: 'spikes', P: 1400, amp: 66, spacing: 56, seed: 83, crystals: true }
     ],
-    hint: 'Es ist dunkel, du siehst nur in deiner Nähe. Leuchtkristalle an den Säulen helfen.'
+    hint: 'Seitlich und auf und ab: Die Felssäulen bewegen sich in alle Richtungen.'
   },
   {
-    name: 'Sturm', pipeCount: 30, pipeGap: 180,
+    name: 'Sturm', pipeGap: 182,
     palette: { skyTop: '#2b293d', skyBottom: '#6d628b', far: '#474061', near: '#2d2a3f', pipe: '#5e5476', accent: '#dbcaff' },
-    hazard: { type: 'wind', params: { every: 200, dur: 90, drift: 1.0, lead: 45 } },
     physicsOverride: {},
-    movingPipes: { share: 0.5, amplitude: 36, period: 200, motion: 'sine' },
-    sidePipes: { share: 0.35, amplitude: 20, period: 190 },
     boss: { pattern: 'laser', name: 'Gewitterkoloss' },
     music: { scale: 'phrygian', root: 50, bpm: 140, waves: { lead: 'square', bass: 'sawtooth', pad: 'sawtooth' }, filter: 2600, delayFb: 0.26, reverb: 0.35, perc: 'storm', feel: 'storm', seed: 707 },
     skinId: 7,
@@ -452,16 +503,13 @@ const LEVELS = [
       { kind: 'hang', P: 1200, base: 70, amp: 58, freq: 0.01, seed: 72, clouds: true },
       { kind: 'props', P: 1400, prop: 'windgrass', spacing: 30, seed: 73 }
     ],
-    hint: 'Starke Böen und schwankende Türme. Der Flugsand zeigt, woher der Wind kommt.'
+    hint: 'Neu bei den dunklen Kugeln: Bleiflügel machen dich schwerer. Dazu Sturm und Bewegung.'
   },
   {
-    name: 'Uhrwerk', pipeCount: 32, pipeGap: 177,
+    name: 'Uhrwerk', pipeGap: 184,
     palette: { skyTop: '#2e231f', skyBottom: '#7d5b3b', far: '#5b4331', near: '#382a20', pipe: '#c18f46', accent: '#d97a4a' },
-    hazard: { type: 'none', params: {} },
     physicsOverride: {},
-    movingPipes: { share: 0.55, amplitude: 30, period: 260, motion: 'step' },
-    sidePipes: { share: 0.35, amplitude: 20, period: 190 },
-    boss: { pattern: 'gearroll', name: 'Uhrwerkeule' },
+    boss: { pattern: 'ticktock', name: 'Uhrwerkeule' },
     music: { scale: 'minor', root: 50, bpm: 118, waves: { lead: 'square', bass: 'triangle', pad: 'sawtooth' }, filter: 3000, delayFb: 0.2, reverb: 0.25, perc: 'clock', feel: 'clock', seed: 1313 },
     skinId: 13,
     ambient: 'none',
@@ -472,15 +520,12 @@ const LEVELS = [
       { kind: 'station', P: 1200, seed: 132 },
       { kind: 'spikes', P: 1400, amp: 50, spacing: 60, seed: 133, rock: true }
     ],
-    hint: 'Die Rohre bewegen sich im Takt: kurz stillstehen, dann zügig springen.'
+    hint: 'Die Rohre springen im Takt, dazu Wind und seitliches Schwanken.'
   },
   {
-    name: 'Neon', pipeCount: 34, pipeGap: 173,
+    name: 'Neon', pipeGap: 180,
     palette: { skyTop: '#121937', skyBottom: '#2e2566', far: '#212653', near: '#15183a', pipe: '#4fd1de', accent: '#df4fbd' },
-    hazard: { type: 'none', params: {} },
     physicsOverride: {},
-    movingPipes: { share: 0.6, amplitude: 38, period: 195, motion: 'sine' },
-    sidePipes: { share: 0.45, amplitude: 22, period: 185 },
     boss: { pattern: 'spiral', name: 'Sektorwächter' },
     music: { scale: 'minor', root: 57, bpm: 124, waves: { lead: 'square', bass: 'square', pad: 'sawtooth' }, filter: 4200, delayFb: 0.32, reverb: 0.3, perc: 'synth', feel: 'arp', seed: 1010 },
     skinId: 10,
@@ -492,55 +537,12 @@ const LEVELS = [
       { kind: 'city', P: 1200, base: 484, amp: 180, spacing: 60, seed: 102, windows: 0.34, signs: true },
       { kind: 'city', P: 1400, base: 552, amp: 76, spacing: 86, seed: 103, windows: 0.3, roofs: true }
     ],
-    hint: 'Die Neontürme gleiten nach oben, unten und zur Seite.'
+    hint: 'Neu: Die Neontürme kippen leicht zur Seite. Die Lücke liegt dann schräg.'
   },
   {
-    name: 'Asche', pipeCount: 36, pipeGap: 174,
-    palette: { skyTop: '#1e1716', skyBottom: '#5e2d20', far: '#3b2a2a', near: '#211a1a', pipe: '#433836', accent: '#f08a3c' },
-    hazard: { type: 'darkness', params: { sight: 300 } },
-    physicsOverride: {},
-    movingPipes: { share: 0.6, amplitude: 38, period: 195, motion: 'sine' },
-    sidePipes: { share: 0.45, amplitude: 22, period: 185 },
-    boss: { pattern: 'emberrain', name: 'Aschephönix' },
-    music: { scale: 'harmMinor', root: 49, bpm: 92, waves: { lead: 'sawtooth', bass: 'sawtooth', pad: 'sawtooth' }, filter: 1300, delayFb: 0.3, reverb: 0.4, perc: 'heavy', feel: 'dark', seed: 1414 },
-    skinId: 14,
-    ambient: 'sparks',
-    style: { boss: 'phoenix', pipe: 'lava', ground: 'lavarock', projectile: 'blob', pipeNoun: 'Kohlesäule' },
-    sky: { body: 'none', glow: true, smoke: true },
-    layers: [
-      { kind: 'peaks', P: 1000, base: 460, amp: 150, spacing: 200, seed: 141, haze: 0.2 },
-      { kind: 'trunks', P: 1200, spacing: 110, width: [8, 16], seed: 142 },
-      { kind: 'spikes', P: 1400, amp: 40, spacing: 50, seed: 143, cracks: true }
-    ],
-    hint: 'Rauch begrenzt die Sicht, fast alle Säulen bewegen sich.'
-  },
-  {
-    name: 'Lava', pipeCount: 38, pipeGap: 172,
-    palette: { skyTop: '#2a1419', skyBottom: '#86331f', far: '#4d2320', near: '#2c1918', pipe: '#5a3026', accent: '#ef763b' },
-    hazard: { type: 'none', params: {} },
-    physicsOverride: {},
-    movingPipes: { share: 0.65, amplitude: 40, period: 185, motion: 'sine' },
-    sidePipes: { share: 0.5, amplitude: 24, period: 180 },
-    boss: { pattern: 'twinwave', name: 'Magmageist' },
-    music: { scale: 'minorPent', root: 52, bpm: 128, waves: { lead: 'sawtooth', bass: 'sawtooth', pad: 'sawtooth' }, filter: 2400, delayFb: 0.22, reverb: 0.25, perc: 'rock', feel: 'distorted', seed: 303 },
-    skinId: 3,
-    ambient: 'ash',
-    style: { boss: 'magma', pipe: 'lava', ground: 'lavarock', projectile: 'blob', pipeNoun: 'Glutsäule' },
-    sky: { body: 'none', glow: true, smoke: true },
-    layers: [
-      { kind: 'peaks', P: 1000, base: 452, amp: 230, spacing: 270, seed: 31, volcano: true, haze: 0.18 },
-      { kind: 'peaks', P: 1200, base: 498, amp: 132, spacing: 104, seed: 32, jagged: true, veins: true },
-      { kind: 'spikes', P: 1400, amp: 54, spacing: 50, seed: 33, cracks: true }
-    ],
-    hint: 'Die Glutsäulen bewegen sich schnell und weit.'
-  },
-  {
-    name: 'Weltraum', pipeCount: 40, pipeGap: 170,
+    name: 'Weltraum', pipeGap: 168,
     palette: { skyTop: '#0c0f24', skyBottom: '#2b1d48', far: '#3c2b61', near: '#1c2241', pipe: '#8f9bb9', accent: '#f0b35b' },
-    hazard: { type: 'none', params: {} },
     physicsOverride: { GRAVITY: 0.30, FLAP_IMPULSE: -6.5 },
-    movingPipes: { share: 0.7, amplitude: 40, period: 185, motion: 'sine' },
-    sidePipes: { share: 0.55, amplitude: 24, period: 180 },
     boss: { pattern: 'alternate', name: 'Nebelqualle' },
     music: { scale: 'wholeTone', root: 50, bpm: 90, waves: { lead: 'sine', bass: 'sine', pad: 'triangle' }, filter: 4200, delayFb: 0.5, reverb: 0.6, perc: 'soft', feel: 'float', seed: 1515 },
     skinId: 15,
@@ -552,9 +554,103 @@ const LEVELS = [
       { kind: 'stars', P: 1200, cell: 44, chance: 0.45, size: [1.0, 2.0], seed: 152, dust: true },
       { kind: 'station', P: 1400, seed: 153 }
     ],
-    hint: 'Kaum Schwerkraft, die Module treiben in alle Richtungen. Am Ende warten alle 15 Bosse nacheinander.'
+    hint: 'Kaum Schwerkraft, dazu kippende und treibende Module.'
+  },
+  {
+    name: 'Asche', pipeGap: 182,
+    palette: { skyTop: '#1e1716', skyBottom: '#5e2d20', far: '#3b2a2a', near: '#211a1a', pipe: '#433836', accent: '#f08a3c' },
+    physicsOverride: {},
+    boss: { pattern: 'emberrain', name: 'Aschephönix' },
+    music: { scale: 'harmMinor', root: 49, bpm: 92, waves: { lead: 'sawtooth', bass: 'sawtooth', pad: 'sawtooth' }, filter: 1300, delayFb: 0.3, reverb: 0.4, perc: 'heavy', feel: 'dark', seed: 1414 },
+    skinId: 14,
+    ambient: 'sparks',
+    style: { boss: 'phoenix', pipe: 'lava', ground: 'lavarock', projectile: 'blob', pipeNoun: 'Kohlesäule' },
+    sky: { body: 'none', glow: true, smoke: true },
+    layers: [
+      { kind: 'peaks', P: 1000, base: 460, amp: 150, spacing: 200, seed: 141, haze: 0.2 },
+      { kind: 'trunks', P: 1200, spacing: 110, width: [8, 16], seed: 142 },
+      { kind: 'spikes', P: 1400, amp: 40, spacing: 50, seed: 143, cracks: true }
+    ],
+    hint: 'Kippen, Schwanken, Wind: Hier kommt alles zusammen.'
+  },
+  {
+    name: 'Lava', pipeGap: 183,
+    palette: { skyTop: '#2a1419', skyBottom: '#86331f', far: '#4d2320', near: '#2c1918', pipe: '#5a3026', accent: '#ef763b' },
+    physicsOverride: {},
+    boss: { pattern: 'twinwave', name: 'Magmageist' },
+    music: { scale: 'minorPent', root: 52, bpm: 128, waves: { lead: 'sawtooth', bass: 'sawtooth', pad: 'sawtooth' }, filter: 2400, delayFb: 0.22, reverb: 0.25, perc: 'rock', feel: 'distorted', seed: 303 },
+    skinId: 3,
+    ambient: 'ash',
+    style: { boss: 'magma', pipe: 'lava', ground: 'lavarock', projectile: 'blob', pipeNoun: 'Glutsäule' },
+    sky: { body: 'none', glow: true, smoke: true },
+    layers: [
+      { kind: 'peaks', P: 1000, base: 452, amp: 230, spacing: 270, seed: 31, volcano: true, haze: 0.18 },
+      { kind: 'peaks', P: 1200, base: 498, amp: 132, spacing: 104, seed: 32, jagged: true, veins: true },
+      { kind: 'spikes', P: 1400, amp: 54, spacing: 50, seed: 33, cracks: true }
+    ],
+    hint: 'Der letzte Einzelgegner wartet. Alles bewegt sich, schnell und weit.'
+  },
+  {
+    name: 'Schattenreich', pipeGap: 184,
+    palette: { skyTop: '#0b0812', skyBottom: '#2a1636', far: '#1d1226', near: '#120b18', pipe: '#3a2a46', accent: '#b06cff' },
+    physicsOverride: {},
+    boss: { pattern: 'aimed', name: 'Bossansturm' },
+    music: { scale: 'harmMinor', root: 45, bpm: 84, waves: { lead: 'sawtooth', bass: 'sawtooth', pad: 'triangle' }, filter: 1400, delayFb: 0.4, reverb: 0.6, perc: 'heavy', feel: 'dark', seed: 2001 },
+    skinId: 20,
+    ambient: 'motes',
+    style: { boss: 'jelly', pipe: 'rock', ground: 'cavefloor', projectile: 'plasma', pipeNoun: 'Schattensäule' },
+    sky: { body: 'none', glow: true, stars: 0.2 },
+    layers: [
+      { kind: 'spikes', P: 1000, amp: 180, spacing: 140, seed: 201, rock: true },
+      { kind: 'spikes', P: 1200, amp: 110, spacing: 96, seed: 202, rock: true },
+      { kind: 'spikes', P: 1400, amp: 50, spacing: 56, seed: 203, crystals: true }
+    ],
+    hint: 'Neu: Dunkelheit. Du siehst nur in deiner Nähe, Leuchtkristalle helfen. Am Ende kommen alle 19 Bosse nacheinander.'
   }
 ];
+// ============================================================
+// Hindernisplan: alle vier Level etwas Neues, das in seinem ersten Level allein
+// auftritt und danach mit dem Bisherigen kombiniert wird.
+//   ab 4: auf und ab, ab 8: Wind (schneller/langsamer), ab 12: seitlich,
+//   ab 16: kippend, ab 20: Dunkelheit.
+// vert/side: [Anteil, Ausschlag px, Periode Frames, Art], tilt: [Anteil, Winkel rad, Periode]
+// wind: Böe alle every Frames, dur lang, lead vorher angekündigt; tail/head = Tempofaktor
+// ============================================================
+const W8 = (every, tail, head) => ({ every, dur: 120, lead: 60, tail, head });
+const MECH_PLAN = [
+  {}, {}, {},
+  { vert: [0.35, 26, 250] },
+  { vert: [0.45, 30, 235] },
+  { vert: [0.5, 32, 225] },
+  { vert: [0.55, 34, 215] },
+  { wind: W8(300, 1.3, 0.75) },
+  { vert: [0.45, 32, 225], wind: W8(285, 1.3, 0.75) },
+  { vert: [0.5, 34, 215], wind: W8(270, 1.33, 0.73) },
+  { vert: [0.55, 36, 205], wind: W8(260, 1.35, 0.72) },
+  { side: [0.45, 18, 210] },
+  { vert: [0.45, 32, 215], side: [0.4, 18, 205] },
+  { vert: [0.5, 34, 205], side: [0.4, 20, 200], wind: W8(260, 1.35, 0.72) },
+  { vert: [0.55, 30, 260, 'step'], side: [0.45, 20, 195], wind: W8(250, 1.35, 0.72) },
+  { tilt: [0.5, 0.15, 260] },
+  { vert: [0.45, 34, 205], side: [0.35, 20, 195], tilt: [0.4, 0.14, 250] },
+  { vert: [0.5, 36, 200], side: [0.4, 22, 190], tilt: [0.45, 0.15, 240], wind: W8(250, 1.35, 0.72) },
+  { vert: [0.6, 38, 190], side: [0.45, 24, 185], tilt: [0.5, 0.16, 230], wind: W8(240, 1.37, 0.7) },
+  { vert: [0.5, 34, 205], side: [0.4, 20, 195], tilt: [0.4, 0.14, 250], wind: W8(270, 1.33, 0.73), dark: { sight: 240 } }
+];
+// Level, in denen ein neues Hindernis dazukommt (Index): dort bekommt der Boss kein zusätzliches Leben
+const NEW_MECH_LEVELS = new Set([0, 3, 7, 11, 15, 19]);
+LEVELS.forEach((L, i) => {
+  const M = MECH_PLAN[i] || {}, v = M.vert, sd = M.side, tl = M.tilt;
+  L.pipeCount = i === LEVELS.length - 1 ? CONFIG.PIPES_LAST : CONFIG.PIPES_BASE + CONFIG.PIPES_STEP * i;
+  L.movingPipes = v ? { share: v[0], amplitude: v[1], period: v[2], motion: v[3] || 'sine' } : { share: 0, amplitude: 0, period: 1, motion: 'sine' };
+  L.sidePipes = sd ? { share: sd[0], amplitude: sd[1], period: sd[2] } : { share: 0, amplitude: 0, period: 1 };
+  L.tiltPipes = tl ? { share: tl[0], angle: tl[1], period: tl[2] } : { share: 0, angle: 0, period: 1 };
+  L.wind = M.wind || null;
+  L.dark = M.dark || null;
+  L.hazard = M.dark ? { type: 'darkness', params: { sight: M.dark.sight } } : { type: 'none', params: {} };
+});
+// Boss-Leben (= nötige Treffer): Level 1 hat 1, jedes Level ohne neues Hindernis +1
+const BOSS_LIVES = (() => { const out = []; let n = 0; LEVELS.forEach((_, i) => { if (i === 0 || !NEW_MECH_LEVELS.has(i)) n++; out.push(n); }); return out; })();
 const pipesFor = li => LEVELS[li].pipeCount;
 const checkpointFor = li => (li >= CONFIG.CHECKPOINT_FROM ? Math.floor(LEVELS[li].pipeCount / 2) : 0);
 
@@ -732,10 +828,22 @@ function availableSize() {
   const r = stage && stage.getBoundingClientRect ? stage.getBoundingClientRect() : null;
   return r && r.width > 0 && r.height > 0 ? [r.width, r.height] : [window.innerWidth || 400, window.innerHeight || 600];
 }
+// Bildformat (Einstellung): 'auto' folgt dem Fenster, 'hoch' spielt in einer schmalen Spalte, 'quer' immer breit.
+// Liegt hier statt in den Einstellungen, weil resize() schon vor deren Laden läuft.
+const VIEWFMT = { format: 'auto', aw: 400, ah: 600 };
+function targetW(aw, ah) {
+  const w = Math.round(H * aw / ah);
+  if (VIEWFMT.format === 'hoch') return clamp(w, CONFIG.W_PORTRAIT[0], CONFIG.W_PORTRAIT[1]);
+  if (VIEWFMT.format === 'quer') return clamp(w, CONFIG.W_LANDSCAPE[0], CONFIG.W_LANDSCAPE[1]);
+  return clamp(w, CONFIG.W_MIN, CONFIG.W_MAX);
+}
+// Querformat gewählt, aber das Gerät steht hochkant (oder umgekehrt): Hinweis zum Drehen
+const formatMismatch = () => (VIEWFMT.format === 'quer' && VIEWFMT.ah > VIEWFMT.aw * 1.15);
 function resize() {
   const [aw, ah] = availableSize();
   const oldW = W;
-  W = clamp(Math.round(H * aw / ah), CONFIG.W_MIN, CONFIG.W_MAX);
+  VIEWFMT.aw = aw; VIEWFMT.ah = ah;
+  W = targetW(aw, ah);
   const scale = Math.min(aw / W, ah / H) || 1;
   const dpr = window.devicePixelRatio || 1;
   canvas.style.width = `${W * scale}px`;
@@ -1548,7 +1656,8 @@ function getVignette() {
     freeCanvas(screenFx.vignette);
     const c = newCanvas(canvas.width, canvas.height);
     paintCanvas(c, view.k, view.k, 0, 0, () => {
-      ctx.fillStyle = rgrad(W / 2, H / 2, H * 0.3, Math.max(H, W) * 0.8, [[0, rgba(INK, 0)], [0.7, rgba(INK, 0.14)], [1, rgba(INK, 0.36)]]);
+      // Doppelt so kräftig wie gebraucht gemalt; blitVignette blendet je nach Level ab (frühe Level heller, späte dunkler)
+      ctx.fillStyle = rgrad(W / 2, H / 2, H * 0.3, Math.max(H, W) * 0.8, [[0, rgba(INK, 0)], [0.7, rgba(INK, 0.22)], [1, rgba(INK, 0.58)]]);
       ctx.fillRect(0, 0, W, H);
     });
     screenFx.vignette = warmUp(c);
@@ -14205,7 +14314,8 @@ levelByName('Asche').style.ground = 'ashland';
 // ============================================================
 // Laufzeitobjekte. Weltkoordinaten: x wächst nach rechts, der linke
 // Bildrand liegt bei game.scroll. Alles Bewegte wird mit dem
-// Zeitfaktor dt fortgeschrieben (1 normal, 0.6 in Zeitlupe).
+// Zeitfaktor dt fortgeschrieben (1 normal, 0.6 in Zeitlupe; die Zeitlupe
+// bremst nur die Welt, der Vogel fliegt in normalem Tempo).
 // ============================================================
 let bird = null, pipes = [], hazards = [], pickups = [], shots = [], attacks = [], particles = [], boss = null;
 const PHYS = LEVELS.map(L => Object.assign(
@@ -14393,7 +14503,7 @@ function flapBird() {
   return true;
 }
 
-const birdScale = () => (abil.shrink > 0 ? CONFIG.SHRINK_SCALE : 1);
+const birdScale = () => (abil.shrink > 0 ? CONFIG.SHRINK_SCALE : abil.grow > 0 ? CONFIG.GROW_SCALE : 1);
 
 // mode: 'physics' (Spieler), 'hover' (Levelstart), 'auto' (nach dem Boss), 'dead'
 function updateBird(mode, dt) {
@@ -14404,7 +14514,7 @@ function updateBird(mode, dt) {
   if (bird.ceilT > 0) bird.ceilT--;
   if (mode === 'hover') {
     bird.idle = true;
-    bird.hoverY += (CONFIG.BIRD_START_Y - bird.hoverY) * 0.04;
+    bird.hoverY += ((bird.hoverTarget || CONFIG.BIRD_START_Y) - bird.hoverY) * 0.04;
     bird.y = bird.hoverY + Math.sin(frame * 0.06) * 5;
     bird.vy = 0;
     bird.rot += (Math.sin(frame * 0.06 + 1) * 0.06 - bird.rot) * 0.2;
@@ -14423,7 +14533,7 @@ function updateBird(mode, dt) {
     }
     bird.rot += (1.45 - bird.rot) * 0.12;
   } else {
-    bird.vy = Math.min(bird.vy + P.GRAVITY * dt, P.MAX_FALL_SPEED);
+    bird.vy = Math.min(bird.vy + P.GRAVITY * gravityFactor() * dt, P.MAX_FALL_SPEED);
     // Aufwind: zieht den Vogel mit konstanten -0.25 px pro Frame nach oben
     bird.y += (bird.vy + game.updraft) * dt;
     // Decke: sanft abprallen statt sterben
@@ -14470,9 +14580,13 @@ function wingPhase() {
 
 // ============================================================
 // Rohre: generische Objekte mit type 'pipe'. Bewegte Paare fahren
-// gemeinsam auf und ab (movingPipes) und/oder schwanken nach links und
-// rechts (sidePipes); die Lücke bleibt immer gleich groß.
+// gemeinsam auf und ab (movingPipes), schwanken nach links und rechts
+// (sidePipes) und/oder kippen um die Lückenmitte (tiltPipes); die Lücke
+// bleibt immer gleich groß.
 // Bewegungsarten: 'sine' (gleichmäßig) und 'step' (Uhrwerk: halten, dann zügig umsetzen).
+// Alle Rohre eines Versuchs stehen vorab im Layout (aus einem Seed). Dadurch
+// sieht ein Neustart am Checkpoint genauso aus wie der Lauf davor, inklusive
+// der Rohre hinter dem Vogel, und die Bot-Spule kann jede Stelle zeigen.
 // ============================================================
 const smoothStep = t => t * t * (3 - 2 * t);
 // -1..1: hält bei +1, wechselt weich nach -1, hält, wechselt zurück
@@ -14492,54 +14606,112 @@ function pipeGapAt(p, wt) {
 function pipeOffsetAt(p, wt) {
   return p.hamp ? p.hamp * Math.sin(p.hphase + TAU * wt / p.hperiod) : 0;
 }
+// Neigung (rad) zum Zeitpunkt wt; Drehpunkt ist die Mitte der Lücke
+function pipeAngleAt(p, wt) {
+  return p.tamp ? p.tamp * Math.sin(p.tphase + TAU * wt / p.tperiod) : 0;
+}
 const pipeCenter = p => p.gapY + p.gap / 2;
 const pipeX = p => p.slot + p.ox;                       // linke Kante in Weltkoordinaten, aktuell
 const pipeXa = (p, a) => p.slot + lerp(p.pox, p.ox, a);  // interpoliert zum Zeichnen
+// Lückenmitte an der Weltkoordinate wx (bei gekippten Paaren liegt die Lücke schräg)
+const pipeCenterAtX = (p, wx) => pipeCenter(p) + (p.ang ? (wx - (pipeX(p) + PW_ / 2)) * Math.tan(p.ang) : 0);
 
-function spawnPipe() {
-  const li = game.level, L = LEVELS[li], idx = game.pipesSpawned, gap = L.pipeGap, mp = L.movingPipes, sp = L.sidePipes || { share: 0 };
-  const slot = game.lastSlot === null ? game.scroll + W + CONFIG.PIPE_SPAWN_AHEAD : game.lastSlot + CONFIG.PIPE_SPACING;
-  // Das erste Rohr nach Start oder Checkpoint steht still, damit der Einstieg ruhig bleibt
-  const calm = idx <= game.pipesStart;
-  const moving = !calm && mp.share > 0 && RNG() < mp.share;
-  const side = !calm && sp.share > 0 && RNG() < sp.share;
-  const amp = moving ? mp.amplitude : 0, hamp = side ? sp.amplitude : 0;
-  const edge = moving ? CONFIG.MOVING_EDGE_MARGIN + amp : CONFIG.PIPE_EDGE_MARGIN;
-  const minTop = edge, maxTop = GROUND_Y - edge - gap;
-  let top = rand(minTop, maxTop);
-  if (game.lastCenter !== null) {
-    // Aufeinanderfolgende Lücken höchstens 170 auseinander, auch im ungünstigsten Moment der
-    // Bewegung (deshalb beide Ausschläge abziehen). Seitlich schwankende Paare kommen sich näher,
-    // dafür wird der erlaubte Höhenunterschied weiter verkleinert. Gleichverteilt im erlaubten Fenster.
-    const step = Math.max(50, CONFIG.PIPE_MAX_STEP - (amp + game.lastAmp) - 0.6 * (hamp + game.lastHamp));
-    const lo = Math.max(minTop, game.lastCenter - step - gap / 2), hi = Math.min(maxTop, game.lastCenter + step - gap / 2);
-    top = lo <= hi ? rand(lo, hi) : clamp(top, minTop, maxTop);
+// Layout eines Versuchs: Höhe, Bewegung und Variante jedes Rohrs, aus dem Seed
+const TILT_SHIFT = (PW_ / 2 + CONFIG.BIRD_W) * 0.17;   // so weit wandert die Lückenmitte am Vogel bei voller Neigung
+function makeLayout(li, seed) {
+  const L = LEVELS[li], n = pipesFor(li), gap = L.pipeGap, mp = L.movingPipes, sp = L.sidePipes, tp = L.tiltPipes || { share: 0 };
+  const r = mulberry32(seed >>> 0 || 1), list = [];
+  let lastC = null, lastAmp = 0, lastH = 0, lastT = 0;
+  for (let idx = 0; idx < n; idx++) {
+    // Das erste Rohr steht still, damit der Einstieg ruhig bleibt
+    const moving = idx > 0 && mp.share > 0 && r() < mp.share;
+    const side = idx > 0 && sp.share > 0 && r() < sp.share;
+    const tilt = idx > 0 && tp.share > 0 && r() < tp.share;
+    const amp = moving ? mp.amplitude : 0, hamp = side ? sp.amplitude : 0, tsh = tilt ? TILT_SHIFT * tp.angle / 0.17 : 0;
+    const edge = (moving ? CONFIG.MOVING_EDGE_MARGIN + amp : CONFIG.PIPE_EDGE_MARGIN) + (tilt ? CONFIG.TILT_MARGIN : 0);
+    const minTop = edge, maxTop = GROUND_Y - edge - gap;
+    let top = minTop + r() * (maxTop - minTop);
+    if (lastC !== null) {
+      // Aufeinanderfolgende Lücken höchstens 170 auseinander, auch im ungünstigsten Moment der Bewegung
+      // (deshalb alle Ausschläge abziehen). Seitlich schwankende Paare kommen sich näher, gekippte verschieben
+      // die Lücke am Vogel: dafür wird der erlaubte Höhenunterschied weiter verkleinert. Gleichverteilt im Fenster.
+      const step = Math.max(50, CONFIG.PIPE_MAX_STEP - (amp + lastAmp) - 0.6 * (hamp + lastH) - (tsh + lastT));
+      const lo = Math.max(minTop, lastC - step - gap / 2), hi = Math.min(maxTop, lastC + step - gap / 2);
+      top = lo <= hi ? lo + r() * (hi - lo) : clamp(top, minTop, maxTop);
+    }
+    top = Math.round(top);
+    list.push({ top, amp, period: moving ? mp.period : 1, phase: moving ? r() * TAU : 0, motion: moving ? (mp.motion || 'sine') : 'sine',
+      hamp, hperiod: side ? sp.period : 1, hphase: side ? r() * TAU : 0,
+      tamp: tilt ? tp.angle : 0, tperiod: tilt ? tp.period : 1, tphase: tilt ? r() * TAU : 0, v: Math.floor(r() * 2) });
+    lastC = top + gap / 2; lastAmp = amp; lastH = hamp; lastT = tsh;
   }
-  top = Math.round(top);
-  const p = { type: 'pipe', idx, slot, gap, gy0: top, amp, period: moving ? mp.period : 1, phase: moving ? RNG() * TAU : 0, motion: moving ? (mp.motion || 'sine') : 'sine',
-    hamp, hperiod: side ? sp.period : 1, hphase: side ? RNG() * TAU : 0, v: Math.floor(RNG() * 2), passed: false };
+  return { li, seed: seed >>> 0, list, base: 0, shiftFrom: Infinity };
+}
+// Neuer Seed aus dem Spielzufall (im Autotest fest, im Spiel echt zufällig)
+const newSeed = () => (Math.floor(RNG() * 2147483646) + 1) >>> 0;
+// Weltposition (linke Kante) des Rohrs idx, ohne seitliches Schwanken. Beim Fortsetzen am Checkpoint
+// bekommt das Rohr, vor dem es weitergeht, zusätzlichen Anlauf (CP_EXTRA), die Rohre dahinter stehen wie zuvor.
+const slotOf = idx => game.layout.base + idx * CONFIG.PIPE_SPACING + (idx >= game.layout.shiftFrom ? CONFIG.CP_EXTRA : 0);
+
+function ensureLayout() {
+  const lay = game.layout;
+  if (!lay || lay.li !== game.level || (game.pipesSpawned === 0 && game.pipesStart === 0 && !game.keepLayout)) {
+    game.layout = makeLayout(game.level, newSeed());
+    game.layout.base = game.scroll + W + CONFIG.PIPE_SPAWN_AHEAD;
+  } else if (game.pipesSpawned === 0 && game.keepLayout) game.layout.base = game.scroll + W + CONFIG.PIPE_SPAWN_AHEAD;
+  game.keepLayout = false;
+}
+
+function spawnPipe(behind) {
+  if (!behind) ensureLayout();
+  const li = game.level, L = LEVELS[li], idx = game.pipesSpawned, e = game.layout.list[idx];
+  // Das erste Rohr nach Start oder Checkpoint steht still und gerade
+  const calm = idx === game.pipesStart && idx > 0;
+  const p = { type: 'pipe', idx, slot: slotOf(idx), gap: L.pipeGap, gy0: e.top, amp: calm ? 0 : e.amp, period: e.period, phase: e.phase, motion: e.motion,
+    hamp: calm ? 0 : e.hamp, hperiod: e.hperiod, hphase: e.hphase, tamp: calm ? 0 : e.tamp, tperiod: e.tperiod, tphase: e.tphase, v: e.v, passed: !!behind };
   p.gapY = p.pgapY = pipeGapAt(p, game.wt);
   p.ox = p.pox = pipeOffsetAt(p, game.wt);
+  p.ang = p.pang = pipeAngleAt(p, game.wt);
   const prev = pipes.length ? pipes[pipes.length - 1] : null;
   pipes.push(p);
   game.pipesSpawned++;
-  game.lastSlot = slot;
-  game.lastCenter = top + gap / 2;
-  game.lastAmp = amp;
-  game.lastHamp = hamp;
-  if (prev) spawnHazardsBetween(prev, p);
-  maybeSpawnPickup(p);
+  game.lastSlot = p.slot;
+  game.lastCenter = e.top + p.gap / 2;
+  game.lastAmp = p.amp;
+  game.lastHamp = p.hamp;
+  if (prev && !behind) spawnHazardsBetween(prev, p);
+  if (!behind) maybeSpawnPickup(p);
   return p;
+}
+const spawnDue = () => game.pipesSpawned < pipesFor(game.level) && (!game.layout || game.layout.li !== game.level || game.pipesSpawned === 0 && game.pipesStart === 0 && !game.keepLayout
+  || slotOf(game.pipesSpawned) - game.scroll <= W + CONFIG.PIPE_SPAWN_AHEAD);
+
+// Fortsetzen ab Rohr j (Checkpoint oder Startpunkt der Bot-Spule): Das Layout bleibt, die schon passierten Rohre
+// stehen wie gewohnt hinter dem Vogel, vor Rohr j liegt zusätzlicher Anlauf. Der Vogel schwebt auf Höhe der
+// Lücke von Rohr j, bis getippt wird.
+function resumeWorldAt(j) {
+  const lay = game.layout;
+  lay.shiftFrom = j;
+  // Rechte Kante von Rohr j-1 liegt 40 px hinter dem Vogel
+  lay.base = birdWorldX() - 40 - PW_ - (j - 1) * CONFIG.PIPE_SPACING;
+  let first = j;
+  while (first > 0 && slotOf(first - 1) + PW_ > game.scroll - 30) first--;
+  game.pipesSpawned = first;
+  while (game.pipesSpawned < j) spawnPipe(true);
+  // Rohre voraus schon zeigen
+  while (game.pipesSpawned < pipesFor(game.level) && slotOf(game.pipesSpawned) - game.scroll <= W + CONFIG.PIPE_SPAWN_AHEAD) spawnPipe(false);
+  const e = lay.list[Math.min(j, lay.list.length - 1)];
+  return e.top + LEVELS[game.level].pipeGap / 2;
 }
 
 function updatePipes(dt) {
-  const total = pipesFor(game.level);
   if (game.state === 'PLAYING' || game.state === 'CHECKPOINT') {
-    while (game.pipesSpawned < total && (game.lastSlot === null || game.lastSlot - game.scroll <= W + CONFIG.PIPE_SPAWN_AHEAD - CONFIG.PIPE_SPACING)) spawnPipe();
+    while (spawnDue()) spawnPipe(false);
   }
   for (const p of pipes) {
     if (p.amp) p.gapY = pipeGapAt(p, game.wt);
     if (p.hamp) p.ox = pipeOffsetAt(p, game.wt);
+    if (p.tamp) p.ang = pipeAngleAt(p, game.wt);
   }
   const bwx = birdWorldX();
   for (const p of pipes) {
@@ -14555,8 +14727,27 @@ function updatePipes(dt) {
   if (pipes.length && pipeX(pipes[0]) + PW_ + 60 < game.scroll) pipes = pipes.filter(p => pipeX(p) + PW_ + 60 > game.scroll);
 }
 
+// Gedrehtes Rechteck (lokal x in [-hw, hw], y in [y0, y1] um den Drehpunkt cx, cy) gegen eine achsparallele Box (SAT)
+function obbHitsBox(cx, cy, ang, hw, y0, y1, box) {
+  const c = Math.cos(ang), s = Math.sin(ang);
+  const pts = [[-hw, y0], [hw, y0], [hw, y1], [-hw, y1]].map(([lx, ly]) => [cx + lx * c - ly * s, cy + lx * s + ly * c]);
+  const bp = [[box.x, box.y], [box.x + box.w, box.y], [box.x + box.w, box.y + box.h], [box.x, box.y + box.h]];
+  for (const [ax, ay] of [[1, 0], [0, 1], [c, s], [-s, c]]) {
+    let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
+    for (const [x, y] of pts) { const d = x * ax + y * ay; a0 = Math.min(a0, d); a1 = Math.max(a1, d); }
+    for (const [x, y] of bp) { const d = x * ax + y * ay; b0 = Math.min(b0, d); b1 = Math.max(b1, d); }
+    if (a1 <= b0 || b1 <= a0) return false;
+  }
+  return true;
+}
+
 function pipeHits(p, box) {
   const x = pipeX(p) - game.scroll, bot = p.gapY + p.gap;
+  if (p.ang) {
+    if (box.x > x + PW_ + 40 || box.x + box.w < x - 40) return false;
+    const cx = x + PW_ / 2, cy = p.gapY + p.gap / 2, hg = p.gap / 2;
+    return obbHitsBox(cx, cy, p.ang, PW_ / 2, -900, -hg, box) || obbHitsBox(cx, cy, p.ang, PW_ / 2, hg, 900, box);
+  }
   return overlap(box, { x, y: -400, w: PW_, h: p.gapY + 400 }) || overlap(box, { x, y: bot, w: PW_, h: GROUND_Y - bot + 60 });
 }
 
@@ -14587,31 +14778,57 @@ function drawPipes(cache, a) {
   for (const p of pipes) {
     const gy = lerp(p.pgapY, p.gapY, a), x = wxToDev(pipeXa(p, a)) + sxo;
     if (x > canvas.width || x + w < -20) continue;
-    ctx.fillRect(x, -40, w, Math.round(gy * k) + syo + 40);
-    ctx.fillRect(x, Math.round((gy + p.gap) * k) + syo, w, Math.round((GROUND_Y - gy - p.gap) * k));
+    const ang = p.tamp ? lerp(p.pang, p.ang, a) : 0;
+    if (ang) { ctx.save(); tiltDev(x + w / 2, Math.round((gy + p.gap / 2) * k) + syo, ang); }
+    ctx.fillRect(x, -Math.round(80 * k), w, Math.round((gy + 80) * k) + syo);
+    ctx.fillRect(x, Math.round((gy + p.gap) * k) + syo, w, Math.round((GROUND_Y + 60 - gy - p.gap) * k));
+    if (ang) ctx.restore();
   }
   for (const p of pipes) {
     const dx = wxToDev(pipeXa(p, a));
     if (dx > canvas.width + 40 * k || dx < -120 * k) continue;
-    drawPipeDev(cache.pipe, p, dx, lerp(p.pgapY, p.gapY, a));
+    const gy = lerp(p.pgapY, p.gapY, a), ang = p.tamp ? lerp(p.pang, p.ang, a) : 0;
+    if (ang) {
+      ctx.save();
+      tiltDev(dx + Math.round(PW_ / 2 * k), Math.round((gy + p.gap / 2) * k), ang);
+      drawPipeDev(cache.pipe, p, dx, gy, true);
+      ctx.restore();
+    } else drawPipeDev(cache.pipe, p, dx, gy, false);
   }
   ctx.imageSmoothingEnabled = true;
   ctx.restore();
 }
+// Drehung um einen Punkt in Gerätepixeln
+function tiltDev(px, py, ang) {
+  ctx.translate(px, py);
+  ctx.rotate(ang);
+  ctx.translate(-px, -py);
+}
 
-function drawPipeDev(ps, p, dx, gy) {
+function drawPipeDev(ps, p, dx, gy, tilted) {
   const k = view.k, body = ps.bodies[p.v], f = k / body.ks, PCH_ = CONFIG.PIPE_CAP_H;
-  ctx.imageSmoothingEnabled = f !== 1;
+  ctx.imageSmoothingEnabled = tilted || f !== 1;
   const bx = dx + Math.round(body.x0 * k), bw = Math.round(body.c.width * f);
-  const topEnd = Math.round((gy - PCH_) * k), topStart = -Math.round(20 * k);
+  // Gekippt reichen die Körper weiter über Bildrand und Boden hinaus, damit keine Enden sichtbar werden
+  const topEnd = Math.round((gy - PCH_) * k), topStart = -Math.round((tilted ? 90 : 20) * k);
   if (topEnd > topStart) {
-    const sh = Math.min(body.c.height, Math.ceil((topEnd - topStart) / f));
-    ctx.drawImage(body.c, 0, body.c.height - sh, body.c.width, sh, bx, topEnd - Math.round(sh * f), bw, Math.round(sh * f));
+    let y = topEnd;
+    while (y > topStart) {
+      const sh = Math.min(body.c.height, Math.ceil((y - topStart) / f));
+      ctx.drawImage(body.c, 0, body.c.height - sh, body.c.width, sh, bx, y - Math.round(sh * f), bw, Math.round(sh * f));
+      y -= Math.round(sh * f);
+      if (!tilted) break;
+    }
   }
-  const botStart = Math.round((gy + p.gap + PCH_) * k), botEnd = Math.round((GROUND_Y + 10) * k);
+  const botStart = Math.round((gy + p.gap + PCH_) * k), botEnd = Math.round((GROUND_Y + (tilted ? 70 : 10)) * k);
   if (botEnd > botStart) {
-    const sh = Math.min(body.c.height, Math.ceil((botEnd - botStart) / f));
-    ctx.drawImage(body.c, 0, 0, body.c.width, sh, bx, botStart, bw, Math.round(sh * f));
+    let y = botStart;
+    while (y < botEnd) {
+      const sh = Math.min(body.c.height, Math.ceil((botEnd - y) / f));
+      ctx.drawImage(body.c, 0, 0, body.c.width, sh, bx, y, bw, Math.round(sh * f));
+      y += Math.round(sh * f);
+      if (!tilted) break;
+    }
   }
   drawSpriteDev(ps.capTop, dx, Math.round((gy - PCH_) * k));
   drawSpriteDev(ps.capBot, dx, Math.round((gy + p.gap) * k));
@@ -14644,7 +14861,7 @@ function drawStrip(s, off) {
 // ============================================================
 // inset: so weit dürfen Hindernisse in den Höhenbereich der Lücken hineinragen
 const HZ = { inset: 12 };
-const wind = { t: 0, dir: 1, state: 'calm' };
+const wind = { t: 0, dir: 1, state: 'calm', speed: 1, n: 0 };
 
 // Flugband im Korridor zwischen zwei Rohren: von der höchsten Lückenoberkante bis zur
 // tiefsten Lückenunterkante beider Rohre (bewegte Rohre mit Ausschlag), leicht eingerückt
@@ -14663,7 +14880,7 @@ const birdRightWorld = () => birdWorldX() + CONFIG.BIRD_W;
 
 function hazardType() { return LEVELS[game.level].hazard.type; }
 function hazardParams() { return LEVELS[game.level].hazard.params || {}; }
-const sightRadius = () => (hazardParams().sight || 0);
+const sightRadius = () => (LEVELS[game.level].dark ? LEVELS[game.level].dark.sight : 0);
 
 // ============================================================
 // Erzeugen: wird beim Spawnen jedes Rohrs aufgerufen
@@ -14883,17 +15100,29 @@ function hazardRight(h) {
   return h.x + 40;
 }
 
-// Wind: Böen alle 240 Frames für 90 Frames, 45 Frames vorher kündigt Flugsand sie an
+// Wind (ab Level 8): Böen alle every Frames für dur Frames, lead Frames vorher kündigt Flugsand sie an.
+// Rückenwind (dir +1) macht den Flug schneller, Gegenwind (dir -1) langsamer: Das Tempo gleitet weich auf
+// tail bzw. head und zurück. Dazu ein kleiner sichtbarer Versatz des Vogels in Windrichtung.
+// Die Richtung jeder Böe hängt am Layout-Seed: Ein Neustart am Checkpoint und die Bot-Spule sehen denselben Wind.
+const windOf = () => LEVELS[game.level].wind;
 function updateWind(dt) {
-  const P = hazardParams(), every = P.every || 240, dur = P.dur || 90, lead = P.lead || 45;
+  const P = windOf();
+  if (!P) { wind.speed = 1; wind.state = 'calm'; return; }
+  const every = P.every || 240, dur = P.dur || 90, lead = P.lead || 45;
   wind.t += dt;
   const cyc = wind.t % every, gustStart = every - dur, leadStart = gustStart - lead;
   const prev = wind.state;
   wind.state = cyc >= gustStart ? 'gust' : cyc >= leadStart ? 'lead' : 'calm';
-  if (wind.state === 'lead' && prev === 'calm') wind.dir = RNG() < 0.5 ? -1 : 1;
+  if (wind.state === 'lead' && prev === 'calm') {
+    wind.n = Math.floor(wind.t / every);
+    wind.dir = mulberry32(((game.layout ? game.layout.seed : 1) + wind.n * 7919) >>> 0)() < 0.5 ? -1 : 1;
+  }
+  const target = wind.state === 'gust' ? (wind.dir > 0 ? P.tail || 1.3 : P.head || 0.75) : 1;
+  wind.speed += (target - wind.speed) * Math.min(1, 0.05 * dt);
+  if (Math.abs(wind.speed - target) < 0.002) wind.speed = target;
   // Versatz unabhängig von der Bildbreite begrenzen, sonst wären breite Bildschirme schwerer
-  const maxF = Math.min(W * 0.16, 64), maxB = Math.min(birdHomeX() - 26, 64);
-  if (wind.state === 'gust') bird.dx = clamp(bird.dx + wind.dir * (P.drift || 0.8) * dt, -maxB, maxF);
+  const maxF = Math.min(W * 0.08, 30), maxB = Math.min(birdHomeX() - 26, 30);
+  if (wind.state === 'gust') bird.dx = clamp(bird.dx + wind.dir * 0.4 * dt, -maxB, maxF);
   else bird.dx = Math.abs(bird.dx) < 0.5 * dt ? 0 : bird.dx - Math.sign(bird.dx) * 0.5 * dt;
   // Flugsand (spielrelevant, deshalb immer sichtbar)
   if (!SIM.on && wind.state !== 'calm') {
@@ -15524,23 +15753,30 @@ function drawDarkness(a, strength) {
   logT();
   ctx.strokeStyle = rgba(mix(CREAM, C.accent, 0.35), 0.24 * strength);
   ctx.lineWidth = 1.2;
-  ctx.beginPath();
   for (const p of pipes) {
     const x = pipeXa(p, a) - (lerp(game.prevScroll, game.scroll, a)), gy = lerp(p.pgapY, p.gapY, a);
     if (x > W + 10 || x + PW_ < -10) continue;
-    ctx.moveTo(x, 0); ctx.lineTo(x, gy); ctx.lineTo(x + PW_, gy); ctx.lineTo(x + PW_, 0);
-    ctx.moveTo(x, GROUND_Y); ctx.lineTo(x, gy + p.gap); ctx.lineTo(x + PW_, gy + p.gap); ctx.lineTo(x + PW_, GROUND_Y);
+    // Gekippte Paare: Umriss mitdrehen (um die Lückenmitte), sonst stimmt er nicht mit der Säule überein
+    const ang = p.tamp ? lerp(p.pang, p.ang, a) : 0;
+    ctx.save();
+    if (ang) { const px = x + PW_ / 2, py = gy + p.gap / 2; ctx.translate(px, py); ctx.rotate(ang); ctx.translate(-px, -py); }
+    const ext = ang ? 60 : 0;
+    ctx.beginPath();
+    ctx.moveTo(x, -ext); ctx.lineTo(x, gy); ctx.lineTo(x + PW_, gy); ctx.lineTo(x + PW_, -ext);
+    ctx.moveTo(x, GROUND_Y + ext); ctx.lineTo(x, gy + p.gap); ctx.lineTo(x + PW_, gy + p.gap); ctx.lineTo(x + PW_, GROUND_Y + ext);
+    ctx.stroke();
+    ctx.restore();
   }
-  ctx.stroke();
 }
 
 // ============================================================
-// Boss: gemeinsame Mechanik für alle 15, nur das Muster ist verschieden.
+// Boss: gemeinsame Mechanik für alle, nur das Muster ist verschieden.
 // Ablauf: BOSS_INTRO (Einflug) -> BOSS_GRACE (Schonfrist) -> BOSS_FIGHT.
 // Ein Angriff nach dem anderen. Jedes ausgewichene Geschoss prallt am
 // Rand ab und fliegt blass zum Boss zurück; der erste Rückpraller eines
-// ausgewichenen Angriffs trifft ihn. Level n braucht n Treffer, im
-// letzten Level kommen alle 15 Bosse nacheinander mit je 2 Treffern.
+// ausgewichenen Angriffs trifft ihn. Treffer pro Level stehen in BOSS_LIVES
+// (Level 1: 1, jedes Level ohne neues Hindernis +1). Im letzten Level kommen
+// die 19 Bosse der Level davor nacheinander mit je 2 Treffern.
 // Abstand und Tempo hängen von der Bildbreite ab, damit die Zeit bis zum
 // Vogel überall gleich bleibt (sonst wären breite Bildschirme viel leichter).
 // ============================================================
@@ -15566,8 +15802,9 @@ const rainSpeed = () => Math.max(2.2, (bossDist() - 16) / (bossTTC() * 1.3));
 // Pause zwischen zwei Angriffen (enthält die Vorwarnung): von 90 Frames in Level 1 auf 64 in Level 14
 const attackCooldown = () => Math.max(64, CONFIG.ATTACK_COOLDOWN - 2 * game.level);
 const isRushLevel = li => li === LEVELS.length - 1;
-// Trefferzahl: Level n braucht n, im Boss-Ansturm jeder Boss 2
-const bossNeedFor = li => (isRushLevel(li) ? CONFIG.RUSH_HITS : li + 1);
+const RUSH_COUNT = LEVELS.length - 1;          // Bosse im Ansturm: die der Level 1 bis 19
+// Trefferzahl: laut BOSS_LIVES, im Boss-Ansturm jeder Boss 2
+const bossNeedFor = li => (isRushLevel(li) ? CONFIG.RUSH_HITS : BOSS_LIVES[li]);
 
 function makeBoss(li) {
   const b = { li, x: W + 40, enterX: W + 40, y: Math.round(rand(CONFIG.BOSS_Y_MIN + 60, CONFIG.BOSS_Y_MAX - 60)), dir: RNG() < 0.5 ? -1 : 1, timer: 0, plan: null,
@@ -16080,6 +16317,8 @@ function drawOrb(s, C, st, x, y) {
       break;
     }
     default:
+      // Eigene Geschossformen neuer Biome: ART2.projectile[stil](s, C, x, y), Radius s.r, Flugrichtung aus s.vx/s.vy
+      if (ART2.projectile[st]) { ART2.projectile[st](s, C, x, y); break; }
       circle(x, y, r, shade(C.accent, -CONFIG.SIDE_DARKEN));
       circle(x - 1, y - 1, r * 0.8, C.accent);
       circle(x - 1.5, y - 1.5, r * 0.42, CREAM);
@@ -16944,20 +17183,32 @@ function drawJelly(P, t, w) {
 // Fähigkeiten ab Level 3: leuchtende Kugeln in einzelnen Rohrlücken.
 // Zeitlupe, Phantom und Schrumpfen wirken beim Einsammeln sofort für
 // 5 Sekunden (eine Wirkung zur Zeit, eine neue ersetzt die laufende).
+// Die Zeitlupe bremst die Welt (Rohre, Bewegung, Wind), nicht den Vogel.
 // Zweite Chance bleibt als Extraleben, bis sie gebraucht wird, auch über
 // das Level hinaus und im Bosskampf.
+// Schlechte Kugeln ab Level 5: dunkel mit Zacken, zwischen zwei Rohren
+// mitten auf der natürlichen Flugbahn. Man weicht ihnen aus, indem man
+// drüber oder drunter fliegt. Tempo (ab 5), Riesenvogel (ab 10) und
+// Bleiflügel (ab 14) wirken je 5 Sekunden.
 // ============================================================
 const ABILITIES = {
-  SLOW_MO:       { name: 'Zeitlupe', color: '#8fd0ff', desc: '5 Sekunden lang läuft alles langsamer' },
+  SLOW_MO:       { name: 'Zeitlupe', color: '#8fd0ff', desc: '5 Sekunden lang bewegt sich die Welt langsamer' },
   ZWEITE_CHANCE: { name: 'Zweite Chance', color: '#ff9fb2', desc: 'Rettet dich einmal automatisch' },
   PHANTOM:       { name: 'Phantom', color: '#c8b6ff', desc: '5 Sekunden lang durch Säulen fliegen' },
-  SCHRUMPFEN:    { name: 'Schrumpfen', color: '#9cefb2', desc: '5 Sekunden lang kleiner' }
+  SCHRUMPFEN:    { name: 'Schrumpfen', color: '#9cefb2', desc: '5 Sekunden lang kleiner' },
+  TEMPO:         { name: 'Tempo', color: '#ff7a59', desc: '5 Sekunden lang schneller', bad: true },
+  RIESE:         { name: 'Riesenvogel', color: '#e2a03f', desc: '5 Sekunden lang größer', bad: true },
+  BLEI:          { name: 'Bleiflügel', color: '#9aa3b8', desc: '5 Sekunden lang schwerer', bad: true }
 };
-const ABILITY_KEYS = Object.keys(ABILITIES);
-const TIMED = { SLOW_MO: 'slow', PHANTOM: 'phantom', SCHRUMPFEN: 'shrink' };
-const abil = { slow: 0, phantom: 0, shrink: 0, active: null, extra: false, tf: 1, pop: 0, plan: [] };
+const ABILITY_KEYS = ['SLOW_MO', 'ZWEITE_CHANCE', 'PHANTOM', 'SCHRUMPFEN'];
+const DEBUFF_KEYS = ['TEMPO', 'RIESE', 'BLEI'];
+const TIMED = { SLOW_MO: 'slow', PHANTOM: 'phantom', SCHRUMPFEN: 'shrink', TEMPO: 'tempo', RIESE: 'grow', BLEI: 'lead' };
+const abil = { slow: 0, phantom: 0, shrink: 0, tempo: 0, grow: 0, lead: 0, active: null, bad: null, extra: false, tf: 1, sf: 1, pop: 0, plan: [], badPlan: [] };
 
 function abilitiesActive() { return game.level >= CONFIG.ABILITY_FROM && !SIM.noAbilities; }
+// Schlechte Kugeln, die es in Level li schon gibt (in der Reihenfolge ihres Auftretens)
+const debuffsFor = li => CONFIG.DEBUFF_FROM.filter(([, from]) => li >= from).map(([k]) => k);
+const newDebuffIn = li => { const d = CONFIG.DEBUFF_FROM.find(([, from]) => from === li); return d ? d[0] : null; };
 
 // Wie viele Kugeln ein Level bekommt: 2, in langen Leveln 3, gleichmäßig über das Level verteilt
 function pickupPlan(li) {
@@ -16965,23 +17216,51 @@ function pickupPlan(li) {
   for (let k = 1; k <= count; k++) out.push(Math.round(n * k / (count + 1)));
   return out;
 }
+// Schlechte Kugeln: ab Level 5 eine, ab Level 10 zwei, ab Level 15 drei; zwischen Rohr idx-1 und idx,
+// nie direkt neben einer guten Kugel, nie am Anfang
+function debuffPlan(li) {
+  if (!debuffsFor(li).length) return [];
+  const n = pipesFor(li), count = li < 9 ? 1 : li < 14 ? 2 : 3, good = pickupPlan(li), out = [];
+  for (let k = 1; k <= count; k++) {
+    let idx = Math.round(n * (k - 0.5) / count + 1);
+    while (good.some(g => Math.abs(g - idx) <= 1) || out.includes(idx)) idx++;
+    out.push(clamp(idx, 3, n - 1));
+  }
+  return out;
+}
 
 function resetAbilities(keepExtra) {
-  abil.slow = abil.phantom = abil.shrink = 0;
-  abil.active = null;
-  abil.tf = 1;
+  abil.slow = abil.phantom = abil.shrink = abil.tempo = abil.grow = abil.lead = 0;
+  abil.active = abil.bad = null;
+  abil.tf = abil.sf = 1;
   abil.pop = 0;
   if (!keepExtra) abil.extra = false;
   abil.plan = abilitiesActive() ? pickupPlan(game.level).filter(i => i > game.pipesStart) : [];
+  abil.badPlan = abilitiesActive() ? debuffPlan(game.level).filter(i => i > game.pipesStart) : [];
+  abil.badCount = 0;
 }
 
 function maybeSpawnPickup(p) {
-  if (!abilitiesActive() || !abil.plan.includes(p.idx)) return;
-  // Zweite Chance seltener und nur, wenn sie gerade fehlt
-  const w = { SLOW_MO: 1, PHANTOM: 1, SCHRUMPFEN: 1, ZWEITE_CHANCE: abil.extra || pickups.some(u => u.kind === 'ZWEITE_CHANCE') ? 0 : 0.7 };
-  let r = RNG() * (w.SLOW_MO + w.PHANTOM + w.SCHRUMPFEN + w.ZWEITE_CHANCE), kind = 'SLOW_MO';
-  for (const k of ABILITY_KEYS) { if (r < w[k]) { kind = k; break; } r -= w[k]; }
-  pickups.push({ type: 'pickup', kind, pipe: p, x: pipeX(p) + PW_ / 2, px: pipeX(p) + PW_ / 2, y: pipeCenter(p), py: pipeCenter(p), t: 0, taken: false });
+  if (!abilitiesActive()) return;
+  if (abil.plan.includes(p.idx)) {
+    // Zweite Chance seltener und nur, wenn sie gerade fehlt
+    const w = { SLOW_MO: 1, PHANTOM: 1, SCHRUMPFEN: 1, ZWEITE_CHANCE: abil.extra || pickups.some(u => u.kind === 'ZWEITE_CHANCE') ? 0 : 0.7 };
+    let r = RNG() * (w.SLOW_MO + w.PHANTOM + w.SCHRUMPFEN + w.ZWEITE_CHANCE), kind = 'SLOW_MO';
+    for (const k of ABILITY_KEYS) { if (r < w[k]) { kind = k; break; } r -= w[k]; }
+    pickups.push({ type: 'pickup', kind, pipe: p, x: pipeX(p) + PW_ / 2, px: pipeX(p) + PW_ / 2, y: pipeCenter(p), py: pipeCenter(p), t: 0, taken: false });
+  }
+  const prev = pipes.length > 1 ? pipes[pipes.length - 2] : null;
+  if (prev && abil.badPlan.includes(p.idx)) spawnDebuff(prev, p);
+}
+
+// Schlechte Kugel mittig zwischen zwei Rohren auf der Linie zwischen den Lückenmitten (Ruhelage).
+// Daneben bleibt nach oben und unten der ganze Luftraum frei.
+function spawnDebuff(A, B) {
+  const li = game.level, avail = debuffsFor(li), fresh = newDebuffIn(li);
+  const kind = fresh && abil.badCount === 0 ? fresh : avail[Math.floor(RNG() * avail.length)];
+  abil.badCount++;
+  const x = (A.slot + PW_ + B.slot) / 2, y = clamp((A.gy0 + A.gap / 2 + B.gy0 + B.gap / 2) / 2, 70, GROUND_Y - 70);
+  pickups.push({ type: 'pickup', kind, bad: true, pipe: null, x, px: x, y0: y, y, py: y, t: RNG() * 100, taken: false });
 }
 
 function updatePickups(dt) {
@@ -16990,14 +17269,17 @@ function updatePickups(dt) {
   for (const u of pickups) {
     u.t += dt;
     u.px = u.x; u.py = u.y;
-    u.x = pipeX(u.pipe) + PW_ / 2;
-    u.y = u.pipe.gapY + u.pipe.gap / 2 + Math.sin(u.t * 0.08) * 4;
+    if (u.bad) u.y = u.y0 + Math.sin(u.t * 0.06) * 5;
+    else {
+      u.x = pipeX(u.pipe) + PW_ / 2;
+      u.y = u.pipe.gapY + u.pipe.gap / 2 + Math.sin(u.t * 0.08) * 4;
+    }
     if (u.taken) continue;
     const sx = u.x - game.scroll;
-    if (circleBox(sx, u.y, 16, box)) {
+    if (circleBox(sx, u.y, u.bad ? 14 : 16, box)) {
       u.taken = true;
       applyPickup(u.kind);
-      burst(sx, u.y, 12, [ABILITIES[u.kind].color, CREAM], 3, 22, { kind: 'spark', grav: 0 });
+      burst(sx, u.y, 12, [ABILITIES[u.kind].color, u.bad ? INK : CREAM], 3, 22, { kind: 'spark', grav: 0 });
     }
   }
   pickups = pickups.filter(u => !u.taken && u.x + 30 > game.scroll);
@@ -17006,31 +17288,46 @@ function updatePickups(dt) {
 // Einsammeln: sofort wirksam
 function applyPickup(kind) {
   abil.pop = 1;
-  sfx('activate');
   if (kind === 'ZWEITE_CHANCE') {
+    sfx('activate');
     abil.extra = true;
     showToast('Zweite Chance: rettet dich einmal', 110);
     return;
   }
+  const A = ABILITIES[kind];
+  if (A.bad) {
+    sfx('hazard');
+    abil[TIMED[kind]] = CONFIG.ABILITY_FRAMES;
+    if (kind === 'RIESE') abil.shrink = 0;            // groß und klein heben sich auf
+    abil.bad = kind;
+    showToast(`${A.name}: 5 Sekunden`, 100);
+    flash(0.18, A.color);
+    return;
+  }
+  sfx('activate');
   abil.slow = abil.phantom = abil.shrink = 0;
+  if (kind === 'SCHRUMPFEN') abil.grow = 0;
   abil[TIMED[kind]] = CONFIG.ABILITY_FRAMES;
   abil.active = kind;
-  showToast(`${ABILITIES[kind].name}: 5 Sekunden`, 100);
-  const C = ABILITIES[kind].color;
-  burst(bird.x + 17, bird.y + 12, 14, [C, CREAM], 3.2, 24, { kind: 'spark', grav: 0 });
+  showToast(`${A.name}: 5 Sekunden`, 100);
+  burst(bird.x + 17, bird.y + 12, 14, [A.color, CREAM], 3.2, 24, { kind: 'spark', grav: 0 });
 }
 
-// Wirkdauern laufen in echten Frames; Zeitfaktor gleitet weich auf 0,6 und zurück
+// Wirkdauern laufen in echten Frames; Zeitfaktor (Welt) und Tempo gleiten weich
 function updateAbilityTimers() {
-  if (abil.slow > 0) abil.slow--;
-  if (abil.phantom > 0) abil.phantom--;
-  if (abil.shrink > 0) abil.shrink--;
+  for (const k of ['slow', 'phantom', 'shrink', 'tempo', 'grow', 'lead']) if (abil[k] > 0) abil[k]--;
   if (abil.active && abil[TIMED[abil.active]] <= 0) abil.active = null;
+  if (abil.bad && abil[TIMED[abil.bad]] <= 0) abil.bad = DEBUFF_KEYS.find(k => abil[TIMED[k]] > 0) || null;
   abil.pop = Math.max(0, abil.pop - 0.05);
   const target = abil.slow > 0 ? CONFIG.SLOW_FACTOR : 1;
   abil.tf += (target - abil.tf) * 0.25;
   if (Math.abs(abil.tf - target) < 0.01) abil.tf = target;
+  const st = abil.tempo > 0 ? CONFIG.TEMPO_FACTOR : 1;
+  abil.sf += (st - abil.sf) * 0.12;
+  if (Math.abs(abil.sf - st) < 0.005) abil.sf = st;
 }
+// Schwerkraft-Faktor des Vogels (Bleiflügel)
+const gravityFactor = () => (abil.lead > 0 ? CONFIG.LEAD_GRAVITY : 1);
 
 function hasSecondChance() { return abil.extra; }
 
@@ -17043,6 +17340,8 @@ function reviveBird(color) {
   bird.y = bird.py = cy - CONFIG.BIRD_H / 2;
   bird.vy = -2;
   bird.inv = CONFIG.REVIVE_INVULN;
+  abil.tempo = abil.grow = abil.lead = 0;
+  abil.bad = null;
   shake(CONFIG.SHAKE_HIT[0], CONFIG.SHAKE_HIT[1]);
   flash(0.3, color);
   sfx('activate');
@@ -17055,10 +17354,11 @@ function useSecondChance() {
   return true;
 }
 
-// Beim Betreten des Bosskampfs: laufende Wirkung endet, Kugeln verschwinden. Das Extraleben bleibt.
+// Beim Betreten des Bosskampfs: laufende Wirkungen enden, Kugeln verschwinden. Das Extraleben bleibt.
 function clearAbilitiesForBoss() {
-  abil.slow = abil.phantom = abil.shrink = 0;
-  abil.active = null;
+  abil.slow = abil.phantom = abil.shrink = abil.tempo = abil.grow = abil.lead = 0;
+  abil.active = abil.bad = null;
+  abil.tf = abil.sf = 1;
   pickups = [];
 }
 
@@ -17068,6 +17368,7 @@ function drawPickups(a) {
     const sx = lerp(u.px, u.x, a) - camX, y = lerp(u.py, u.y, a);
     if (sx < -30 || sx > W + 30) continue;
     const A = ABILITIES[u.kind];
+    if (u.bad) { drawBadOrb(u, A, sx, y); continue; }
     ctx.drawImage(glowSprite(A.color), sx - 26, y - 26, 52, 52);
     circle(sx + SHADOW.x * 0.4, y + SHADOW.y * 0.4, 13, rgba(INK, CONFIG.SHADOW_ALPHA));
     circle(sx, y, 13, rgrad(sx, y, 1, 13, [[0, mix(A.color, CREAM, 0.6)], [0.7, A.color], [1, shade(A.color, -0.3)]], sx - 4, y - 4));
@@ -17079,8 +17380,32 @@ function drawPickups(a) {
     abilityIcon(u.kind, sx, y, 8, INK);
   }
 }
+// Schlechte Kugel: dunkler Kern, Zackenkranz in der Warnfarbe, helles Symbol. Unverwechselbar mit den guten.
+function drawBadOrb(u, A, sx, y) {
+  const r = 12, spin = u.t * 0.03;
+  // Warnschein in Rot, damit die dunkle Kugel auch vor dunklem Hintergrund auffällt
+  ctx.globalAlpha = 0.55 + 0.25 * Math.sin(u.t * 0.12);
+  ctx.drawImage(glowSprite('#ff4a3d'), sx - 30, y - 30, 60, 60);
+  ctx.globalAlpha = 1;
+  circle(sx + SHADOW.x * 0.4, y + SHADOW.y * 0.4, r + 2, rgba(INK, CONFIG.SHADOW_ALPHA));
+  ctx.beginPath();
+  for (let k = 0; k < 16; k++) {
+    const an = spin + k * TAU / 16, rr = k % 2 ? r + 1 : r + 6;
+    if (k) ctx.lineTo(sx + Math.cos(an) * rr, y + Math.sin(an) * rr); else ctx.moveTo(sx + Math.cos(an) * rr, y + Math.sin(an) * rr);
+  }
+  ctx.closePath();
+  ctx.fillStyle = shade(A.color, -0.15);
+  ctx.fill();
+  circle(sx, y, r, rgrad(sx, y, 1, r, [[0, mix(INK, A.color, 0.35)], [1, INK]], sx - 3, y - 3));
+  ctx.strokeStyle = rgba(A.color, 0.95);
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.arc(sx, y, r, 0, TAU);
+  ctx.stroke();
+  abilityIcon(u.kind, sx, y, 7, mix(A.color, CREAM, 0.45));
+}
 
-// Symbole: Uhr, Herz, Geist, Pfeile nach innen
+// Symbole: Uhr, Herz, Geist, Pfeile nach innen; schlecht: Doppelpfeil, Pfeile nach außen, Gewicht
 function abilityIcon(kind, x, y, s, col) {
   ctx.strokeStyle = col;
   ctx.fillStyle = col;
@@ -17122,9 +17447,37 @@ function abilityIcon(kind, x, y, s, col) {
       }
       ctx.stroke();
       break;
+    case 'TEMPO':
+      for (const ox of [-0.45, 0.25]) {
+        ctx.moveTo(x + (ox - 0.3) * s, y - s * 0.7);
+        ctx.lineTo(x + (ox + 0.35) * s, y);
+        ctx.lineTo(x + (ox - 0.3) * s, y + s * 0.7);
+      }
+      ctx.stroke();
+      break;
+    case 'RIESE':
+      for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+        ctx.moveTo(x + dx * s * 0.2, y + dy * s * 0.2);
+        ctx.lineTo(x + dx * s * 0.85, y + dy * s * 0.85);
+        ctx.moveTo(x + dx * s * 0.85, y + dy * s * 0.45);
+        ctx.lineTo(x + dx * s * 0.85, y + dy * s * 0.85);
+        ctx.lineTo(x + dx * s * 0.45, y + dy * s * 0.85);
+      }
+      ctx.stroke();
+      break;
+    case 'BLEI':
+      ctx.moveTo(x - s * 0.75, y + s * 0.75);
+      ctx.lineTo(x - s * 0.5, y - s * 0.2);
+      ctx.lineTo(x + s * 0.5, y - s * 0.2);
+      ctx.lineTo(x + s * 0.75, y + s * 0.75);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(x, y - s * 0.45, s * 0.3, 0, TAU);
+      ctx.stroke();
+      break;
   }
 }
-
 // ============================================================
 // Skins: Körperform, 3 Farben, Flügelform, Augenstil, Schleppe.
 // Klassik ist immer frei, dazu ein Skin pro abgeschlossenem Level.
@@ -17145,7 +17498,12 @@ const SKINS = [
   { id: 12, name: 'Wattebausch', shape: 'round', colors: { body: '#f1ebf6', accent: '#f6b77c', wing: '#b9a5dd' }, wing: 'cloud', eye: 'sleepy', trail: 'cloud' },
   { id: 13, name: 'Zahnradfink', shape: 'segmented', colors: { body: '#c18f46', accent: '#d97a4a', wing: '#7a5a2e' }, wing: 'gear', eye: 'monocle', trail: 'cog' },
   { id: 14, name: 'Aschefalke', shape: 'angular', colors: { body: '#4a3d3a', accent: '#f08a3c', wing: '#2b2323' }, wing: 'flame', eye: 'slit', trail: 'ember' },
-  { id: 15, name: 'Sternenpilot', shape: 'round', colors: { body: '#8f9bb9', accent: '#f0b35b', wing: '#3c2b61' }, wing: 'feather', eye: 'helmet', trail: 'star' }
+  { id: 15, name: 'Sternenpilot', shape: 'round', colors: { body: '#8f9bb9', accent: '#f0b35b', wing: '#3c2b61' }, wing: 'feather', eye: 'helmet', trail: 'star' },
+  { id: 16, name: 'Kirschblüte', shape: 'round', colors: { body: '#f2a7c3', accent: '#fff1c9', wing: '#d6799f' }, wing: 'feather', eye: 'big', trail: 'leaf' },
+  { id: 17, name: 'Lagunenfink', shape: 'round', colors: { body: '#3fb7a8', accent: '#ffd6a0', wing: '#ff8a65' }, wing: 'fin', eye: 'round', trail: 'bubble' },
+  { id: 18, name: 'Laubrascher', shape: 'segmented', colors: { body: '#c8632f', accent: '#f3c76a', wing: '#7a3f22' }, wing: 'leaf', eye: 'sleepy', trail: 'leaf' },
+  { id: 19, name: 'Tempelwächter', shape: 'angular', colors: { body: '#a39778', accent: '#e0c060', wing: '#5e5a48' }, wing: 'feather', eye: 'monocle', trail: 'sand' },
+  { id: 20, name: 'Nachtschatten', shape: 'angular', colors: { body: '#3a2a46', accent: '#b06cff', wing: '#1d1226' }, wing: 'bat', eye: 'glow', trail: 'glow' }
 ];
 const SKIN_LABELS = {
   shape: { round: 'Rund', angular: 'Kantig', segmented: 'Segmentiert' },
@@ -17517,6 +17875,7 @@ function drawBird(a) {
   let alpha = 1;
   if (bird.inv > 0 && !bird.dead) alpha = Math.floor(bird.inv / 4) % 2 ? 0.3 : 1;
   if (abil.phantom > 0) alpha *= 0.5;
+  if (game.ghostBird) alpha *= GHOST.alpha;       // Bot-Spule: blass wie ein abgewehrtes Geschoss
   ellipse(cx + SHADOW.x * 0.7, cy + SHADOW.y * 0.7, 15 * s, 10 * s, rot * 0.5, rgba(INK, CONFIG.SHADOW_ALPHA * alpha));
   const spr = getBirdSprite(sk, wingPhase(), bird.dead), c = Math.cos(rot) * s, sn = Math.sin(rot) * s;
   ctx.save();
@@ -17804,7 +18163,8 @@ const MusicGen = (() => {
   // Stufen der Biom-Tonleiter; Spielweise, Lage und Pegel der Stimmen; Schlagzeug; Sende-Anteile
   // für Echo und Hall; trim gleicht die Lautheit an (in dB). Tonleiter, Tempo und Wellenformen
   // kommen unverändert aus LEVELS[i].music. tune enthält die erlaubte Feinabstimmung.
-  const BIOME_NAMES = ['Wiese', 'Eis', 'Lava', 'Dschungel', 'Wüste', 'Ozean', 'Sturm', 'Höhle', 'Sumpf', 'Neon', 'Kristall', 'Wolken', 'Uhrwerk', 'Asche', 'Weltraum'];
+  const BIOME_NAMES = ['Wiese', 'Eis', 'Lava', 'Dschungel', 'Wüste', 'Ozean', 'Sturm', 'Höhle', 'Sumpf', 'Neon', 'Kristall', 'Wolken', 'Uhrwerk', 'Asche', 'Weltraum',
+    'Blütenhain', 'Lagune', 'Herbstwald', 'Ruinen', 'Schattenreich'];
   const BIOME = [
     { // 0 Wiese: Dur-Pentatonik, hell und federnd
       harm: [0, 4, 1, 3, 0, 4, 3, 0, 4, 2, 1, 3, 0, 4, 1, 3], riff: [4, 3, 0, 1],
@@ -17910,6 +18270,41 @@ const MusicGen = (() => {
       pad: { att: 1.6, rel: 2.2, ext: 2, center: 62, gain: 0.85, lfo: 0.05 },
       bass: { pat: 'r...........5...', lo: 40 },
       kit: 'space', send: { dly: 0.4, dlyPerc: 0.4, rev: 1.1 }
+    },
+    { // 15 Blütenhain: Dur-Pentatonik, Spieluhr aus hellen Glocken, sanft gezupfte Fläche
+      harm: [0, 3, 4, 0, 0, 3, 1, 4, 0, 3, 4, 2, 0, 3, 1, 4], riff: [0, 3, 4, 1],
+      lead: { inst: 'bell', center: 81, decay: 0.4, maxLen: 12, partials: [[1, 1, 1], [3, 0.16, 0.35], [5.1, 0.05, 0.15]] },
+      pad: { mode: 'strum', pat: 'x.......x.......', att: 0.01, sus: 0.45, dec: 0.4, rel: 0.2, lp: 2800, center: 64, gain: 0.85, art: 0.95 },
+      bass: { pat: 'r.......5.......', lo: 40 },
+      kit: 'light', percGain: 0.7, send: { dly: 0.22, rev: 0.95 }
+    },
+    { // 16 Lagune: mixolydisch, Marimba mit leichtem Swing
+      harm: [0, 6, 3, 0, 0, 6, 4, 4, 0, 6, 3, 3, 5, 6, 4, 4], riff: [0, 6, 3, 4],
+      lead: { inst: 'mallet', center: 74, decay: 0.2, art: 1 },
+      pad: { mode: 'broken', pat: 'x..x..x...x..x..', idx: [0, 1, 2, 1], art: 0.9, att: 0.004, sus: 0.25, dec: 0.15, rel: 0.1, center: 62, gain: 0.9, lp: 2600 },
+      bass: { pat: 'r..r..5.r..r..5.', lo: 38, art: 0.7 },
+      kit: 'light', send: { dly: 0.18, rev: 0.85 }
+    },
+    { // 17 Herbstwald: dorisch, gezupft wie eine Laute, warme Fläche
+      harm: [0, 0, 6, 6, 3, 3, 4, 4, 0, 0, 6, 6, 3, 4, 0, 0], riff: [0, 6, 3, 4],
+      lead: { inst: 'pluck', center: 72, decay: 0.35, grace: 0.15 },
+      pad: { att: 0.9, rel: 1.4, center: 60, gain: 0.85, lp: 1900 },
+      bass: { pat: 'r.......r...5...', lo: 36 },
+      kit: 'brush', send: { dly: 0.2, rev: 0.9 }
+    },
+    { // 18 Ruinen: phrygisch, Laute und Rahmentrommel, enger Filter
+      harm: [0, 0, 1, 1, 0, 0, 6, 1, 3, 3, 1, 1, 0, 6, 1, 1], riff: [0, 1, 0, 6],
+      lead: { inst: 'oud', center: 67, decay: 0.32, grace: 0.25 },
+      pad: { att: 1.2, rel: 1.6, power: true, lp: 850, center: 50, gain: 0.7 },
+      bass: { pat: 'r.....r...r.....', lo: 33 },
+      kit: 'frame', hp: 180, send: { dly: 0.24, rev: 1.05 }
+    },
+    { // 19 Schattenreich: harmonisch Moll, tief und schwer, langsamer Puls
+      harm: [0, 0, 5, 5, 6, 6, 4, 4, 0, 0, 5, 5, 3, 3, 4, 4], riff: [0, 5, 6, 4],
+      lead: { inst: 'dark', center: 62, pool: 'slow', att: 0.08, sus: 0.85, rel: 0.45, art: 1, vib: 9, maxLen: 12 },
+      pad: { att: 1.4, rel: 2, lp: 650, center: 50, gain: 0.9, power: true, lfo: 0.04 },
+      bass: { pat: 'r.......r.r.....', lo: 31, lp: 520 },
+      kit: 'heavy', send: { dly: 0.2, rev: 1.1, revPerc: 0.9 }
     }
   ];
   // Menü und Endbildschirm
@@ -17967,7 +18362,13 @@ const MusicGen = (() => {
     level13: [0.8, 2, 7.2, -1.2, 1.8],
     boss13: [0.5, -0.1, 4.5, -1.1, 1.6],
     level14: [-7.7, -3.5, -4.8, -2, 1.3],
-    boss14: [-8.6, -4.6, -4.2, -1.7, 1.3]
+    boss14: [-8.6, -4.6, -4.2, -1.7, 1.3],
+    // Neue Biome: Werte vom klanglich ähnlichsten Stück übernommen (nicht neu gemessen)
+    level15: [-0.7, -0.5, 0.6, -0.1, 2.1], boss15: [-1.9, -3.3, 0.2, -0.8, 1.6],
+    level16: [1.4, -1.4, 0.3, 4.3, 2.4], boss16: [-0.5, -3.3, -1.4, -1.2, 2],
+    level17: [-0.7, -0.5, 0.6, -0.1, 2.1], boss17: [-1.9, -3.3, 0.2, -0.8, 1.6],
+    level18: [5.5, 2.1, -0.2, 1.9, 2.5], boss18: [4, 0.4, -1.4, 1.2, 1.9],
+    level19: [0.8, 2, 7.2, -1.2, 1.8], boss19: [0.5, -0.1, 4.5, -1.1, 1.6]
   };
   // CAL-END
 
@@ -19029,10 +19430,11 @@ const CALM_STATES = new Set(['MENU', 'LEVEL_SELECT', 'SKIN_SELECT', 'SKIN_EDITOR
 
 // Fortschritt liegt im Speicher (Datenmodell v4, gespeichert wird weiter unten). Beide Objekte werden nur
 // verändert, nie ersetzt: andere Module halten Referenzen.
-const progress = { open: LEVELS.map((_, i) => i === 0), beaten: LEVELS.map(() => false),
+const progress = { open: LEVELS.map((_, i) => i === 0), beaten: LEVELS.map(() => false), bot: LEVELS.map(() => false),
   completed: false, best: null, customSkins: [], resume: null, savedAt: 0 };
 const DIFFICULTIES = ['leicht', 'mittel', 'schwer'];
-const SETTINGS_DEFAULT = Object.freeze({ skin: 0, ambient: false, volume: 0.8, difficulty: 'mittel' });
+const SETTINGS_DEFAULT = Object.freeze({ skin: 0, ambient: false, volume: 0.8, difficulty: 'mittel', format: 'auto' });
+const FORMATS = ['auto', 'hoch', 'quer'];
 const settings = Object.assign({}, SETTINGS_DEFAULT);
 const highestOpen = () => { let h = 0; progress.open.forEach((o, i) => { if (o) h = i; }); return h; };
 // Vorschlag für "Weiter": das erste offene, noch nicht geschaffte Level, sonst das höchste offene
@@ -19050,12 +19452,15 @@ function storageSet(key, val) {
   try { window.localStorage.setItem(key, val); } catch (e) { /* ohne Speicher weiter */ }
 }
 
-// ---------- Stand v4 ----------
+// ---------- Stand v5 ----------
 // Ein Stand, lokal und in der Cloud gleich aufgebaut:
-// { v: 4, progress: { open, beaten, completed, best: { frames, deaths } | null, customSkins, resume: { li, pipes, frames } | null, savedAt },
-//   settings: { skin, ambient, volume, difficulty } }
+// { v: 5, names: [Levelnamen], progress: { open, beaten, bot, completed, best: { frames, deaths } | null, customSkins,
+//   resume: { li, pipes, frames, seed } | null, savedAt }, settings: { skin, ambient, volume, difficulty, format } }
+// Die Arrays liegen in der Reihenfolge von names; beim Laden wird per Name auf LEVELS abgebildet. So überstehen
+// Spielstände jede künftige Umsortierung. v4 (15 Level) wird über V4_LEVEL_ORDER übernommen.
 // Jede Quelle (lokal, Cloud, Hot-Reload, alte Fassungen) gilt als unzuverlässig und wird geprüft und bereinigt.
 // Levelreihenfolgen alter Fassungen: deren Arrays werden per Levelname auf LEVELS abgebildet
+const V4_LEVEL_ORDER = ['Wiese', 'Wolken', 'Ozean', 'Dschungel', 'Wüste', 'Sumpf', 'Eis', 'Kristall', 'Höhle', 'Sturm', 'Uhrwerk', 'Neon', 'Asche', 'Lava', 'Weltraum'];
 const V3_LEVEL_ORDER = ['Wiese', 'Eis', 'Lava', 'Dschungel', 'Wüste', 'Ozean', 'Sturm', 'Höhle', 'Sumpf', 'Neon', 'Kristall', 'Wolken', 'Uhrwerk', 'Asche', 'Weltraum'];
 const V2_LEVEL_ORDER = ['Wiese', 'Eis', 'Lava', 'Dschungel', 'Wüste', 'Ozean', 'Sturm', 'Höhle', 'Neon', 'Weltraum'];
 const MAX_CUSTOM_SKINS = 8;
@@ -19094,7 +19499,7 @@ function unionSkins(first, second) {
 // Fortschritt in der Form v4. names: Levelnamen in der Reihenfolge, in der die Arrays von d liegen (fehlt: aktuelle Reihenfolge)
 function cleanProgress(d, names) {
   const N = LEVELS.length;
-  const p = { open: LEVELS.map((_, i) => i === 0), beaten: LEVELS.map(() => false), completed: false, best: null, customSkins: [], resume: null, savedAt: 0 };
+  const p = { open: LEVELS.map((_, i) => i === 0), beaten: LEVELS.map(() => false), bot: LEVELS.map(() => false), completed: false, best: null, customSkins: [], resume: null, savedAt: 0 };
   if (!isRec(d)) return p;
   const at = i => (names ? (i < names.length ? levelIndexOf(names[i]) : -1) : (i < N ? i : -1));
   const each = (arr, fn) => {
@@ -19102,6 +19507,7 @@ function cleanProgress(d, names) {
   };
   each(d.open, j => { p.open[j] = true; });
   each(d.beaten, j => { p.beaten[j] = true; });
+  each(d.bot, j => { p.bot[j] = true; p.open[j] = true; });
   // Ein geschafftes Level ist offen, das in der aktuellen Reihenfolge folgende ebenso
   p.beaten.forEach((b, j) => { if (b) { p.open[j] = true; if (j + 1 < N) p.open[j + 1] = true; } });
   p.completed = d.completed === true;
@@ -19109,7 +19515,11 @@ function cleanProgress(d, names) {
   const b = d.best, frames = isRec(b) ? natIn(b.frames, 1e9) : -1;
   if (frames > 0) p.best = { frames, deaths: Math.max(0, natIn(b.deaths, 1e6)) };
   const r = d.resume, li = isRec(r) && Number.isInteger(r.li) && r.li >= 0 ? at(r.li) : -1;
-  if (li >= 0 && natIn(r.pipes, 1e4) >= 0 && natIn(r.frames, 1e9) >= 0) p.resume = { li, pipes: natIn(r.pipes, 1e4), frames: natIn(r.frames, 1e9) };
+  if (li >= 0 && natIn(r.pipes, 1e4) >= 0 && natIn(r.frames, 1e9) >= 0) {
+    p.resume = { li, pipes: natIn(r.pipes, 1e4), frames: natIn(r.frames, 1e9) };
+    const sd = natIn(r.seed, 4294967295);
+    if (sd > 0) p.resume.seed = sd;
+  }
   p.savedAt = Math.max(0, natIn(d.savedAt, Number.MAX_SAFE_INTEGER));
   return p;
 }
@@ -19122,10 +19532,25 @@ function cleanSettings(d) {
   s.ambient = d.ambient === true;
   if (typeof d.volume === 'number' && Number.isFinite(d.volume)) s.volume = clamp(d.volume, 0, 1);
   if (DIFFICULTIES.includes(d.difficulty)) s.difficulty = d.difficulty;
+  if (FORMATS.includes(d.format)) s.format = d.format;
   return s;
 }
-// Kanonische Form (feste Schlüsselreihenfolge, gleiche Stände ergeben gleiches JSON). Klein und begrenzt: 2 x 15 Werte, höchstens 8 Skins.
-const saveRecord = st => ({ v: 4, progress: st.progress, settings: st.settings });
+// Kanonische Form (feste Schlüsselreihenfolge, gleiche Stände ergeben gleiches JSON). Klein und begrenzt: 3 x 20 Werte, höchstens 8 Skins.
+const saveRecord = st => ({ v: 5, names: LEVELS.map(L => L.name), progress: st.progress, settings: st.settings });
+// Levelnamen eines gelesenen Stands: v5 trägt sie selbst, v4 nutzt die feste alte Reihenfolge
+function savedNames(d) {
+  if (Number(d.v) === 4) return V4_LEVEL_ORDER;
+  const n = d.names;
+  return Array.isArray(n) && n.length <= 64 && n.every(x => typeof x === 'string') ? n : null;
+}
+// Stand eines Datensatzes (v4 oder v5) bereinigt lesen; v4 hatte 15 Level und ein anderes Ende: Bestzeit und
+// "durchgespielt" gelten nicht weiter, alles andere (offen, geschafft, Skins, Einstellungen) wird übernommen
+function recordToSave(d) {
+  if (!isRec(d) || !isRec(d.progress)) return null;
+  const p = cleanProgress(d.progress, savedNames(d));
+  if (Number(d.v) === 4) { p.best = null; p.completed = false; }
+  return { progress: p, settings: cleanSettings(d.settings) };
+}
 const saveJSON = st => JSON.stringify(saveRecord(st));
 // Inhalt ohne savedAt: entscheidet, ob sich wirklich etwas geändert hat
 const saveContent = st => JSON.stringify(saveRecord({ progress: Object.assign({}, st.progress, { savedAt: 0 }), settings: st.settings }));
@@ -19134,14 +19559,17 @@ const currentSave = () => ({ progress: cleanProgress(progress), settings: cleanS
 
 // Bereinigten Stand in die bestehenden Objekte übernehmen (nie ersetzen)
 function applyProgress(p) {
-  for (const k of ['open', 'beaten']) { progress[k].length = LEVELS.length; p[k].forEach((v, i) => { progress[k][i] = v; }); }
+  for (const k of ['open', 'beaten', 'bot']) { progress[k].length = LEVELS.length; p[k].forEach((v, i) => { progress[k][i] = v; }); }
   progress.completed = p.completed;
   progress.best = p.best ? { frames: p.best.frames, deaths: p.best.deaths } : null;
   progress.customSkins.splice(0, progress.customSkins.length, ...p.customSkins);
   progress.resume = p.resume ? Object.assign({}, p.resume) : null;
   progress.savedAt = p.savedAt;
 }
-function applySettings(s) { Object.assign(settings, s); }
+function applySettings(s) {
+  Object.assign(settings, s);
+  if (VIEWFMT.format !== settings.format) { VIEWFMT.format = settings.format; resize(); }
+}
 function applySave(st) { applyProgress(st.progress); applySettings(st.settings); }
 
 // Zwei Stände zusammenführen (a: dieses Gerät, b: Cloud oder Hot-Reload). Offene und geschaffte Level vereinigt,
@@ -19151,7 +19579,8 @@ function mergeSaves(a, b) {
   const A = a.progress, B = b.progress, bNewer = B.savedAt > A.savedAt, newer = bNewer ? b : a, older = bNewer ? a : b;
   return {
     progress: cleanProgress({
-      open: A.open.map((o, i) => o || B.open[i]), beaten: A.beaten.map((x, i) => x || B.beaten[i]), completed: A.completed || B.completed,
+      open: A.open.map((o, i) => o || B.open[i]), beaten: A.beaten.map((x, i) => x || B.beaten[i]), bot: A.bot.map((x, i) => x || B.bot[i]),
+      completed: A.completed || B.completed,
       best: !A.best ? B.best : !B.best || A.best.frames <= B.best.frames ? A.best : B.best,
       customSkins: unionSkins(newer.progress.customSkins, older.progress.customSkins),
       resume: newer.progress.resume, savedAt: Math.max(A.savedAt, B.savedAt)
@@ -19186,14 +19615,19 @@ function progressFromV2(d) {
 const localSave = { content: '' };      // Inhalt (ohne savedAt) des zuletzt gesicherten Stands
 function readLocalSave() {
   const d = parseSave(storageGet(CONFIG.STORAGE_KEY));
-  return isRec(d) && isRec(d.progress) ? { progress: cleanProgress(d.progress), settings: cleanSettings(d.settings) } : null;
+  return isRec(d) && Number(d.v) === 5 ? recordToSave(d) : null;
+}
+// Stand v4 (15 Level) aus dem alten Schlüssel; der alte Schlüssel bleibt unangetastet
+function readV4Save() {
+  const d = parseSave(storageGet(CONFIG.STORAGE_KEY_V4));
+  return isRec(d) && Number(d.v) === 4 ? recordToSave(d) : null;
 }
 function writeLocalSave(st) { storageSet(CONFIG.STORAGE_KEY, saveJSON(st)); }
 
 // Lokalen Fortschritt laden: v4, sonst Übernahme aus v3, sonst aus v2. Synchron, wirft nie.
 function loadProgress() {
   try {
-    const own = readLocalSave();
+    const own = readLocalSave() || readV4Save();
     let p = own && own.progress;
     if (!p) { const d = parseSave(storageGet(CONFIG.STORAGE_KEY_V3)); if (isRec(d)) p = progressFromV3(d); }
     if (!p) { const d = parseSave(storageGet(CONFIG.STORAGE_KEY_OLD)); if (isRec(d)) p = progressFromV2(d); }
@@ -19203,7 +19637,7 @@ function loadProgress() {
 // Einstellungen laden: aus dem Stand v4, sonst aus dem alten Einstellungsschlüssel (Schwierigkeit dann "mittel")
 function loadSettings() {
   try {
-    const own = readLocalSave(), old = own ? null : parseSave(storageGet(CONFIG.SETTINGS_KEY));
+    const own = readLocalSave() || readV4Save(), old = own ? null : parseSave(storageGet(CONFIG.SETTINGS_KEY));
     if (own) applySettings(own.settings);
     else if (isRec(old)) applySettings(cleanSettings(old));
   } catch (e) { /* Standardwerte */ }
@@ -19227,10 +19661,11 @@ function saveSettings() { commitSave(); }
 
 // Setzt auch den Cloud-Stand zurück: Ist die Cloud noch nicht gelesen, wird dort danach nichts zurückgeholt, sondern überschrieben.
 function resetProgress() {
-  progress.open.length = progress.beaten.length = LEVELS.length;
+  progress.open.length = progress.beaten.length = progress.bot.length = LEVELS.length;
   progress.open.fill(false);
   progress.open[0] = true;
   progress.beaten.fill(false);
+  progress.bot.fill(false);
   progress.completed = false;
   progress.best = null;
   progress.customSkins.length = 0;
@@ -19249,6 +19684,7 @@ function tryCode(li, value) {
   const v = String(value || '').trim().toUpperCase();
   if (!Number.isInteger(li) || li < 0 || li >= LEVELS.length) return { ok: false, text: 'Unbekanntes Level.' };
   if (v.toLowerCase() === CONFIG.PASSWORD || (v.length === 4 && v === LEVEL_CODES[li])) {
+    if (v.toLowerCase() === CONFIG.PASSWORD) progress.bot[li] = true;   // Startpunkt per Spule wählbar
     unlockLevel(li);
     return { ok: true, li, text: `Level ${li + 1} freigeschaltet: ${LEVELS[li].name}` };
   }
@@ -19261,9 +19697,10 @@ function unlockLevel(li) {
 }
 
 // Fortsetzungspunkt für den Spielablauf: Level li, bereits passierte Rohre, gespielte Frames. Beide speichern sofort.
-function setResume(li, pipes, frames) {
+function setResume(li, pipes, frames, seed) {
   if (!Number.isInteger(li) || li < 0 || li >= LEVELS.length) return false;
   progress.resume = { li, pipes: Math.max(0, natIn(pipes, 1e4)), frames: Math.max(0, natIn(frames, 1e9)) };
+  if (natIn(seed, 4294967295) > 0) progress.resume.seed = natIn(seed, 4294967295);
   saveProgress();
   return true;
 }
@@ -19285,7 +19722,7 @@ function adoptHotData(data) {
     if (!isRec(old)) return;
     const cur = currentSave();
     let p = null, s = cur.settings;
-    if (data.v === 4) {
+    if (data.v === 4 || data.v === 5) {
       const names = Array.isArray(data.names) && data.names.length <= 64 && data.names.every(n => typeof n === 'string') ? data.names : null;
       p = cleanProgress(old, names);
       if (isRec(data.settings)) s = cleanSettings(data.settings);
@@ -19338,9 +19775,10 @@ async function cloudPull() {
       cloudSave.reads++;
     } while (SIM.on);
     const raw = snap && snap.exists && typeof snap.data === 'function' ? snap.data() : null;
-    if (isRec(raw) && Number(raw.v) > 4) { cloudStop(); return; }    // Stand einer neueren Fassung: nicht anfassen
+    if (isRec(raw) && Number(raw.v) > 5) { cloudStop(); return; }    // Stand einer neueren Fassung: nicht anfassen
     const local = currentSave();
-    const remote = isRec(raw) ? { progress: cleanProgress(raw.progress), settings: isRec(raw.settings) ? cleanSettings(raw.settings) : local.settings } : null;
+    const rec = isRec(raw) ? recordToSave(raw) : null;
+    const remote = rec ? { progress: rec.progress, settings: isRec(raw.settings) ? rec.settings : local.settings } : null;
     const merged = remote && !cloudSave.resetPending ? mergeSaves(local, remote) : local;
     cloudSave.resetPending = false;
     applySave(merged);
@@ -19350,7 +19788,7 @@ async function cloudPull() {
     localSave.content = saveContent(merged);
     writeLocalSave(merged);
     // Vergleichsbasis ist der Cloud-Stand in kanonischer Form; unvollständige Dokumente werden überschrieben
-    cloudSave.json = remote && raw.v === 4 && isRec(raw.progress) && isRec(raw.settings) ? saveJSON(remote) : '';
+    cloudSave.json = remote && raw.v === 5 && isRec(raw.progress) && isRec(raw.settings) ? saveJSON(remote) : '';
     cloudSave.ready = true;
     cloudSave.wait = 0;
     cloudSave.dirty = saveJSON(merged) !== cloudSave.json;
@@ -19468,6 +19906,7 @@ const checkpointAt = li => (diff() === 'schwer' ? 0 : checkpointFor(li));
 
 function startFromMenu(li) {
   if (li < 0 || li >= LEVELS.length || !progress.open[li]) return;
+  if (progress.bot[li] && !SIM.on) { enterScrub(li); return; }
   game.runFrames = 0;
   game.deaths = 0;
   game.runFromStart = li === 0;
@@ -19476,7 +19915,7 @@ function startFromMenu(li) {
   const r = progress.resume, cpAt = checkpointAt(li);
   if (r && r.li === li && cpAt && r.pipes === cpAt) {
     game.level = li;
-    game.checkpoint = { pipes: r.pipes, frames: r.frames };
+    game.checkpoint = { pipes: r.pipes, frames: r.frames, seed: r.seed || 0 };
     game.runFromStart = false;
     startLevel(li, 'checkpoint');
     return;
@@ -19500,11 +19939,20 @@ function startLevel(li, mode) {
   game.trans = null; game.paused = false; game.flash = 0; game.updraft = 0; game.wt = 0;
   game.defeat = null; game.waitTap = false; game.bossNote = 0;
   game.free = { pipe: diff() === 'leicht', boss: diff() === 'leicht' };
-  wind.t = 0; wind.state = 'calm';
+  wind.t = 0; wind.state = 'calm'; wind.speed = 1;
+  game.introHold = false;
   const y = mode === 'next' && bird ? bird.y : CONFIG.BIRD_START_Y;
   bird = makeBird();
   bird.y = bird.hoverY = bird.py = y;
   resetAbilities(mode !== 'menu');
+  // Fortsetzen am Checkpoint: gleiches Layout wie im Lauf davor, die passierten Rohre stehen hinter dem Vogel,
+  // die Welt wartet, bis getippt wird
+  if (cp && cp.pipes > 0) {
+    if (!game.layout || game.layout.li !== li || (cp.seed && game.layout.seed !== cp.seed)) game.layout = makeLayout(li, cp.seed || newSeed());
+    const hy = clamp(resumeWorldAt(cp.pipes), 110, GROUND_Y - 110);
+    bird.y = bird.py = bird.hoverY = bird.hoverTarget = hy - CONFIG.BIRD_H / 2;
+    game.introHold = true;
+  }
   if (mode !== 'next') particles = [];
   ambient.list = [];
   game.dark = sightRadius() ? 1 : 0;
@@ -19526,14 +19974,15 @@ function beginPlay() {
 function onPipePassed() {
   const li = game.level, cpAt = checkpointAt(li);
   if (cpAt && !game.checkpoint && game.pipesPassed === cpAt) {
-    game.checkpoint = { pipes: game.pipesPassed, frames: game.runFrames };
-    if (!SIM.on) setResume(li, game.pipesPassed, game.runFrames);   // auch nach dem Schließen ab hier weiter
+    const seed = game.layout ? game.layout.seed : 0;
+    game.checkpoint = { pipes: game.pipesPassed, frames: game.runFrames, seed };
+    if (!SIM.on) setResume(li, game.pipesPassed, game.runFrames, seed);   // auch nach dem Schließen ab hier weiter
     setState('CHECKPOINT');
     sfx('checkpoint');
   }
 }
 
-// Bosskampf beginnen. Im letzten Level der Boss-Ansturm: alle 15 Bosse nacheinander.
+// Bosskampf beginnen. Im letzten Level der Boss-Ansturm: die 19 Bosse der Level davor nacheinander.
 function beginBossIntro(restart) {
   shots = []; attacks = []; hazards = []; pickups = []; pipes = []; bossOut = null;
   ghostInfo.clear();
@@ -19542,8 +19991,8 @@ function beginBossIntro(restart) {
   game.updraft = 0;
   game.introShort = false;
   if (isRushLevel(game.level)) {
-    if (!restart || !game.rush) game.rush = { i: 0, cp: false };
-    else game.rush.i = game.rush.cp && diff() !== 'schwer' ? CONFIG.RUSH_CHECKPOINT : 0;
+    if (!restart || !game.rush) game.rush = { i: 0, cp: -1 };
+    else game.rush.i = game.rush.cp >= 0 && diff() !== 'schwer' ? game.rush.cp : 0;
     boss = makeBoss(game.rush.i);
   } else {
     game.rush = null;
@@ -19568,7 +20017,7 @@ function restartBoss() {
 
 // Der aktuelle Boss hat genug Treffer: im Ansturm kommt der nächste, sonst ist das Level geschafft
 function bossBeaten() {
-  if (game.rush && game.rush.i < LEVELS.length - 1) rushNextBoss();
+  if (game.rush && game.rush.i < RUSH_COUNT - 1) rushNextBoss();
   else defeatBoss();
 }
 function rushNextBoss() {
@@ -19582,9 +20031,9 @@ function rushNextBoss() {
   shake(3, 12);
   sfx('levelup');
   game.rush.i++;
-  if (game.rush.i >= CONFIG.RUSH_CHECKPOINT && !game.rush.cp && diff() !== 'schwer') {
-    game.rush.cp = true;
-    if (!SIM.on) showToast(`Checkpoint: Ab jetzt geht es bei Boss ${CONFIG.RUSH_CHECKPOINT + 1} weiter`, 150);
+  if (CONFIG.RUSH_CHECKPOINTS.includes(game.rush.i) && game.rush.cp < game.rush.i && diff() !== 'schwer') {
+    game.rush.cp = game.rush.i;
+    if (!SIM.on) showToast(`Checkpoint: Ab jetzt geht es bei Boss ${game.rush.i + 1} weiter`, 150);
   }
   shots = []; attacks = [];
   ghostInfo.clear();
@@ -19673,8 +20122,8 @@ function killBird(cause) {
   game.deaths++;
   game.deathCause = cause || 'Rohr';
   game.diedInBoss = bossPhase;
-  abil.slow = abil.phantom = abil.shrink = 0;
-  abil.active = null;
+  abil.slow = abil.phantom = abil.shrink = abil.tempo = abil.grow = abil.lead = 0;
+  abil.active = abil.bad = null;
   flash(0.45, CREAM);
   shake(CONFIG.SHAKE_HIT[0], CONFIG.SHAKE_HIT[1]);
   sfx('death');
@@ -19686,6 +20135,7 @@ function killBird(cause) {
 
 function goMenu(state) {
   game.paused = false;
+  game.ghostBird = false;
   pipes = []; hazards = []; pickups = []; shots = []; attacks = []; boss = null; bossOut = null; particles = [];
   game.rush = null;
   const sel = clamp(game.level, 0, LEVELS.length - 1);
@@ -19696,6 +20146,193 @@ function goMenu(state) {
   shakeFx.t = 0;
   setState(state || 'MENU');
   Music.setTrack('menu');
+}
+
+// ============================================================
+// Bot-Spule: In einem Level, das mit dem Passwort freigeschaltet wurde, wählt man den Startpunkt.
+// Der Bot fliegt das Level vorab einmal (ohne Bild, unverwundbar) und jede Position wird
+// aufgezeichnet. Unten liegt eine Spule: Ziehen spult vor oder zurück, der blasse Vogel fliegt
+// dabei die Sprünge des Bots im Zeitraffer. Gestartet wird nach dem letzten passierten Rohr
+// (wie am Checkpoint, die Rohre dahinter bleiben stehen) oder direkt beim Boss.
+// ============================================================
+const scrub = { li: -1, seed: 0, n: 0, rec: null, pass: [], cur: 0, target: 0, drag: false, play: false, base: 0, layout: null };
+const SCRUB_KEYS = ['scroll', 'wt', 'y', 'vy', 'rot', 'ft', 'dx'];
+
+function recordGhost(li, seed) {
+  const savedRNG = RNG, cap = 24000, rec = {}, pass = [];
+  for (const k of SCRUB_KEYS) rec[k] = new Float32Array(cap);
+  let n = 0;
+  SIM.on = true; SIM.noAbilities = true; SIM.god = true;
+  try {
+    RNG = mulberry32((seed ^ 0x5bd1e995) >>> 0);
+    startLevel(li, 'menu');
+    game.layout = makeLayout(li, seed);
+    game.keepLayout = true;
+    game.state = 'PLAYING';
+    game.t = 0;
+    const D = AT.delay, hist = [];
+    let lastFlap = 0, target = 270, passed = 0;
+    flapBird();
+    while (n < cap) {
+      const y = birdCY();
+      target = pipeTarget(target);
+      hist.push({ f: n, y, vy: bird.vy, target });
+      if (hist.length > D + 6) hist.shift();
+      const o = hist.length > D ? hist[hist.length - 1 - D] : null;
+      if (o && o.f > lastFlap && o.vy >= AT.flapVy && o.y > o.target) { flapBird(); lastFlap = n; }
+      update();
+      rec.scroll[n] = game.scroll; rec.wt[n] = game.wt; rec.y[n] = bird.y; rec.vy[n] = bird.vy;
+      rec.rot[n] = bird.rot; rec.ft[n] = bird.flapT; rec.dx[n] = bird.dx;
+      while (passed < game.pipesPassed) { pass.push(n); passed++; }
+      n++;
+      if (BOSS_STATES.has(game.state)) break;
+    }
+  } finally { SIM.on = false; SIM.noAbilities = false; SIM.god = false; RNG = savedRNG; }
+  return { rec, n, pass, layout: game.layout };
+}
+
+function enterScrub(li) {
+  const seed = newSeed(), r = recordGhost(li, seed);
+  Object.assign(scrub, { li, seed, rec: r.rec, n: r.n, pass: r.pass, layout: r.layout, base: r.layout.base, cur: 0, target: 0, drag: false, play: false });
+  pipes = []; hazards = []; pickups = []; shots = []; attacks = []; boss = null; bossOut = null; particles = [];
+  game.level = li; game.paused = false; game.checkpoint = null; game.rush = null;
+  game.pipesStart = game.pipesPassed = game.pipesSpawned = 0;
+  game.layout = scrub.layout;
+  wind.speed = 1; wind.state = 'calm';
+  bird = makeBird();
+  game.ghostBird = true;
+  setState('SCRUB');
+  Music.setTrack('level' + li);
+  showScrubFrame(0);
+}
+
+// Aufgezeichnete Stelle f zeigen: Kamera, Vogel und die Rohre dort aus dem Layout
+function showScrubFrame(f) {
+  const R = scrub.rec, i = clamp(Math.round(f), 0, scrub.n - 1);
+  game.scroll = game.prevScroll = R.scroll[i];
+  game.wt = R.wt[i];
+  bird.y = bird.py = R.y[i]; bird.vy = R.vy[i]; bird.rot = bird.prot = R.rot[i]; bird.flapT = R.ft[i];
+  bird.dx = R.dx[i]; bird.x = bird.px = birdHomeX() + bird.dx; bird.idle = false; bird.dead = false;
+  game.layout = scrub.layout;
+  game.layout.base = scrub.base;
+  game.layout.shiftFrom = Infinity;
+  pipes = [];
+  const list = scrub.layout.list;
+  for (let idx = 0; idx < list.length; idx++) {
+    const sl = slotOf(idx);
+    if (sl + PW_ + 40 < game.scroll) continue;
+    if (sl > game.scroll + W + CONFIG.PIPE_SPAWN_AHEAD) break;
+    game.pipesSpawned = idx;
+    spawnPipe(true);
+  }
+  game.pipesPassed = scrubPipes(i);
+}
+// Wie viele Rohre der Bot bis Bild f passiert hat
+function scrubPipes(f) { let j = 0; while (j < scrub.pass.length && scrub.pass[j] <= f) j++; return j; }
+const scrubAtBoss = () => scrub.cur >= scrub.n - 2;
+
+function updateScrub() {
+  if (scrub.play && !scrub.drag) {
+    scrub.cur = scrub.target = Math.min(scrub.n - 1, scrub.cur + 1);
+    if (scrub.cur >= scrub.n - 1) scrub.play = false;
+  } else {
+    const d = scrub.target - scrub.cur;
+    // Zeitraffer: große Sprünge schnell, kurz vor dem Ziel noch mindestens dreifaches Tempo
+    if (Math.abs(d) > 0.5) scrub.cur += Math.sign(d) * Math.min(Math.abs(d), Math.max(3, Math.abs(d) * 0.08));
+    else scrub.cur = scrub.target;
+  }
+  showScrubFrame(scrub.cur);
+  updateAmbient(1);
+}
+
+// Spule: Leiste unten im Bodenstreifen, Knopf "Hier starten" darüber
+function scrubBar() { const x0 = 32, x1 = W - 32; return { x0, x1, y: GROUND_Y + 28, hit: { x: x0 - 16, y: GROUND_Y + 4, w: x1 - x0 + 32, h: 52 } }; }
+const scrubStartBtn = () => { const w = Math.min(190, W - 40); return { id: 'start', x: W - w - 16, y: GROUND_Y - 58, w, h: 42 }; };
+const scrubFrameAtX = x => { const b = scrubBar(); return clamp((x - b.x0) / (b.x1 - b.x0), 0, 1) * (scrub.n - 1); };
+const scrubXAt = f => { const b = scrubBar(); return b.x0 + (b.x1 - b.x0) * f / Math.max(1, scrub.n - 1); };
+
+// Zum Rohr davor oder danach springen (Pfeiltasten)
+function scrubStep(dir) {
+  const j = scrubPipes(scrub.target);
+  if (dir > 0) scrub.target = j < scrub.pass.length ? scrub.pass[j] + 1 : scrub.n - 1;
+  else scrub.target = j >= 2 ? scrub.pass[j - 2] + 1 : 0;
+  scrub.play = false;
+}
+
+function startFromScrub() {
+  const li = scrub.li, N = pipesFor(li), j = scrubPipes(scrub.cur), atBoss = scrubAtBoss() || j >= N;
+  game.ghostBird = false;
+  game.runFromStart = false; game.runFrames = 0; game.deaths = 0;
+  if (atBoss) {
+    game.checkpoint = null;
+    startLevel(li, 'menu');
+    game.pipesSpawned = game.pipesPassed = game.shownPipes = N;
+    game.score = game.shownScore = N;
+    beginBossIntro(false);
+    game.waitTap = true;
+    return;
+  }
+  if (j === 0) {
+    game.checkpoint = null;
+    startLevel(li, 'menu');
+    game.layout = scrub.layout;
+    game.keepLayout = true;
+    return;
+  }
+  // Wie am Checkpoint: Ein Absturz führt wieder hierher
+  game.layout = scrub.layout;
+  game.checkpoint = { pipes: j, frames: 0, seed: scrub.seed };
+  startLevel(li, 'checkpoint');
+}
+
+function scrubPress(p) {
+  if (inRect(p, UI.back())) { game.ghostBird = false; goMenu('LEVEL_SELECT'); return; }
+  if (inRect(p, scrubStartBtn())) { startFromScrub(); return; }
+  if (inRect(p, scrubBar().hit)) { scrub.drag = true; scrub.play = false; scrub.target = scrubFrameAtX(p.x); return; }
+  scrub.play = !scrub.play;
+}
+function scrubKey(code) {
+  if (code === 'Escape') { game.ghostBird = false; goMenu('LEVEL_SELECT'); }
+  else if (code === 'ArrowRight') scrubStep(1);
+  else if (code === 'ArrowLeft') scrubStep(-1);
+  else if (code === 'Enter' || code === 'NumpadEnter' || code === 'Space') startFromScrub();
+  else if (code === 'KeyP') scrub.play = !scrub.play;
+}
+
+function drawScrubUI() {
+  const C = COLORS[scrub.li], L = LEVELS[scrub.li], b = scrubBar(), N = pipesFor(scrub.li), j = scrubPipes(scrub.cur);
+  // Kopf
+  iconButton(UI.back(), backIcon);
+  text('Startpunkt wählen', W / 2, 26, FS.md, CREAM, { stroke: rgba(INK, 0.75), lw: 5 });
+  const sub = wrapLines(`Level ${scrub.li + 1}: ${L.name}. Zieh an der Spule unten, der blasse Vogel fliegt den Weg im Zeitraffer. Tippen ins Bild spielt ab.`, W - 110, FS.xxs);
+  sub.slice(0, 2).forEach((l, i) => text(l, W / 2, 50 + i * 14, FS.xxs, rgba(CREAM, 0.85), { weight: 'normal', stroke: rgba(INK, 0.6), lw: 3 }));
+  // Leiste
+  roundRectPath(b.x0 - 6, b.y - 7, b.x1 - b.x0 + 12, 14, 7);
+  ctx.fillStyle = rgba(INK, 0.65);
+  ctx.fill();
+  const cx = scrubXAt(scrub.cur);
+  roundRectPath(b.x0 - 4, b.y - 4, Math.max(8, cx - b.x0 + 4), 8, 4);
+  ctx.fillStyle = rgba(C.accent, 0.85);
+  ctx.fill();
+  const cpAt = checkpointFor(scrub.li);
+  scrub.pass.forEach((f, k) => {
+    const x = scrubXAt(f), big = cpAt && k + 1 === cpAt;
+    line(x, b.y - (big ? 9 : 5), x, b.y + (big ? 9 : 5), rgba(CREAM, big ? 0.95 : 0.55), big ? 2 : 1);
+  });
+  // Boss am Ende
+  const ex = b.x1;
+  poly([[ex, b.y - 9], [ex + 8, b.y], [ex, b.y + 9], [ex - 8, b.y]], C.accent);
+  // Griff
+  circle(cx + 1, b.y + 2, 11, rgba(INK, 0.35));
+  circle(cx, b.y, 11, scrub.drag ? mix(C.accent, CREAM, 0.4) : CREAM);
+  circle(cx, b.y, 5, C.accent);
+  // Beschriftung und Startknopf
+  const atBoss = scrubAtBoss() || j >= N;
+  const lab = atBoss ? 'Start beim Boss' : j === 0 ? 'Start am Anfang' : `Start nach Rohr ${j} von ${N}`;
+  text(lab, 16, GROUND_Y - 37, FS.sm, CREAM, { align: 'left', stroke: rgba(INK, 0.75), lw: 4 });
+  const sb = scrubStartBtn();
+  if (sb.x > 16 + 190) button(sb, 'Hier starten', true, C);
+  else { sb.y = GROUND_Y - 108; button(sb, 'Hier starten', true, C); }
 }
 
 // ============================================================
@@ -19777,21 +20414,26 @@ function update() {
   switch (game.state) {
     case 'MENU': case 'LEVEL_SELECT': case 'SKIN_SELECT': case 'SKIN_EDITOR': case 'AUTOTEST':
       break;
+    case 'SCRUB':
+      updateScrub();
+      break;
     case 'LEVEL_INTRO':
-      game.scroll += S;
+      if (!game.introHold) game.scroll += S;
       updateBird('hover', 1);
       updateParticles(1);
       updateAmbient(1);
       break;
     case 'PLAYING': case 'CHECKPOINT': {
       updateAbilityTimers();
+      // Zeitlupe (abil.tf) bremst nur die Welt; der Vogel fliegt mit normalem Tempo und normaler Schwerkraft.
+      // Wind und die schlechte Kugel "Tempo" ändern, wie schnell die Welt vorbeizieht.
       const dt = abil.tf;
-      game.scroll += S * dt;
+      if (LEVELS[li].wind) updateWind(dt);
+      game.scroll += S * dt * wind.speed * abil.sf;
       game.wt += dt;
       game.runFrames++;
-      if (hazardType() === 'wind') updateWind(dt);
       updateHazards(dt);
-      updateBird('physics', dt);
+      updateBird('physics', 1);
       updatePipes(dt);
       updatePickups(dt);
       updateParticles(dt);
@@ -19911,13 +20553,14 @@ const UI = {
 function menuCol() { const w = Math.min(320, W - 40); return { x: Math.round((W - w) / 2), w }; }
 function menuButtons() {
   const c = menuCol(), list = [];
-  list.push({ id: 'play', x: c.x, y: 184, w: c.w, h: 50 });
-  list.push({ id: 'levels', x: c.x, y: 244, w: c.w, h: 40 });
-  list.push({ id: 'skins', x: c.x, y: 292, w: c.w, h: 40 });
-  list.push({ id: 'editor', x: c.x, y: 340, w: c.w, h: 40 });
-  list.push({ id: 'difficulty', x: c.x, y: 392, w: c.w, h: 36 });
-  list.push({ id: 'ambient', x: c.x, y: 436, w: c.w, h: 32 });
-  if (progress.open.some((o, i) => i > 0 && o) || progress.beaten.some(Boolean)) list.push({ id: 'reset', x: c.x + c.w / 2 - 80, y: 476, w: 160, h: 26 });
+  list.push({ id: 'play', x: c.x, y: 180, w: c.w, h: 48 });
+  list.push({ id: 'levels', x: c.x, y: 236, w: c.w, h: 38 });
+  list.push({ id: 'skins', x: c.x, y: 280, w: c.w, h: 38 });
+  list.push({ id: 'editor', x: c.x, y: 324, w: c.w, h: 38 });
+  list.push({ id: 'difficulty', x: c.x, y: 370, w: c.w, h: 32 });
+  list.push({ id: 'format', x: c.x, y: 408, w: c.w, h: 32 });
+  list.push({ id: 'ambient', x: c.x, y: 446, w: c.w, h: 28 });
+  if (progress.open.some((o, i) => i > 0 && o) || progress.beaten.some(Boolean)) list.push({ id: 'reset', x: c.x + c.w / 2 - 80, y: 482, w: 160, h: 24 });
   return list;
 }
 const audioVisible = () => MENU_STATES.has(game.state) || game.paused;
@@ -19933,7 +20576,7 @@ function gridLayout(n, colsWide, colsNarrow, maxH) {
   const usedH = rows * th + (rows - 1) * gap, oy = y0 + Math.max(0, (ah - usedH) / 2) * 0.4;
   return { cols, rows, tw, th, rect: i => ({ x: x0 + (i % cols) * (tw + gap), y: oy + Math.floor(i / cols) * (th + gap), w: tw, h: th }) };
 }
-const tileGrid = () => gridLayout(LEVELS.length, 5, 3, 150);
+const tileGrid = () => gridLayout(LEVELS.length, 5, 4, 150);
 const skinList = () => [SKINS[0]].concat(LEVELS.map(L => SKINS[L.skinId])).map(s => ({ skin: s, id: s.id, custom: false })).concat(progress.customSkins.map(s => ({ skin: s, id: 'c:' + s.name, custom: true })));
 const skinGrid = () => gridLayout(skinList().length, 6, 4, 118);
 function panelRect(w, h, cy) { const pw = Math.min(w, W - 24); return { x: Math.round((W - pw) / 2), y: Math.round(cy - h / 2), w: pw, h }; }
@@ -19981,6 +20624,7 @@ function onKey(code) {
     return;
   }
   switch (game.state) {
+    case 'SCRUB': scrubKey(code); break;
     case 'MENU': menuKey(code); break;
     case 'LEVEL_SELECT': gridKey(code, LEVELS.length, tileGrid().cols, i => tileActivate(i), () => goMenu()); break;
     case 'SKIN_SELECT': gridKey(code, skinList().length, skinGrid().cols, i => skinActivate(i), () => goMenu()); break;
@@ -20036,7 +20680,7 @@ function menuAction(id) {
     case 'play': startFromMenu(continueLevel()); break;
     case 'levels': openLevelSelect(); break;
     case 'skins': game.sel = Math.max(0, skinList().findIndex(e => e.id === settings.skin)); setState('SKIN_SELECT'); break;
-    case 'editor': if (progress.completed) openSkinEditor(); else showToast('Der Skin-Editor wird nach Level 15 freigeschaltet'); break;
+    case 'editor': if (progress.completed) openSkinEditor(); else showToast(`Der Skin-Editor wird nach Level ${LEVELS.length} freigeschaltet`); break;
     case 'ambient': settings.ambient = !settings.ambient; saveSettings(); break;
     case 'difficulty': {
       settings.difficulty = DIFFICULTIES[(DIFFICULTIES.indexOf(settings.difficulty) + 1) % DIFFICULTIES.length];
@@ -20044,8 +20688,27 @@ function menuAction(id) {
       showToast(DIFF_HINT[settings.difficulty], 200);
       break;
     }
+    case 'format': {
+      settings.format = FORMATS[(FORMATS.indexOf(settings.format) + 1) % FORMATS.length];
+      applyFormat();
+      saveSettings();
+      showToast(FORMAT_HINT[settings.format], 200);
+      break;
+    }
     case 'reset': if (game.resetArm > 0) resetProgress(); else game.resetArm = 180; break;
   }
+}
+const FORMAT_LABEL = { auto: 'Automatisch', hoch: 'Hochformat', quer: 'Querformat' };
+const FORMAT_HINT = {
+  auto: 'Bildformat folgt dem Fenster: am Monitor breit, am Handy so, wie du es hältst',
+  hoch: 'Hochformat: schmales Spielfeld, auch am Monitor',
+  quer: 'Querformat: breites Spielfeld. Am Handy quer halten'
+};
+// Einstellung auf die Bildberechnung übertragen und neu skalieren
+function applyFormat() {
+  if (VIEWFMT.format === settings.format) return;
+  VIEWFMT.format = settings.format;
+  resize();
 }
 function openLevelSelect() { game.sel = continueLevel(); setState('LEVEL_SELECT'); }
 
@@ -20080,6 +20743,7 @@ function onPress(p, src) {
     return;
   }
   switch (game.state) {
+    case 'SCRUB': scrubPress(p); break;
     case 'MENU': { const b = hitList(menuButtons(), p); if (b) menuAction(b.id); break; }
     case 'LEVEL_SELECT': {
       if (inRect(p, UI.back())) { goMenu(); break; }
@@ -20127,6 +20791,7 @@ function onPress(p, src) {
 function onDrag(p) {
   mouse = p;
   if (dragging === 'vol') setVolumeFromX(p.x);
+  if (game.state === 'SCRUB' && scrub.drag) scrub.target = scrubFrameAtX(p.x);
   if (game.state === 'LEVEL_SELECT' && !dialogOpen()) {
     const g = tileGrid();
     for (let i = 0; i < LEVELS.length; i++) if (inRect(p, g.rect(i))) { if (game.sel !== i) { game.sel = i; if (progress.open[i]) setMenuBg(i); } break; }
@@ -20134,6 +20799,7 @@ function onDrag(p) {
 }
 function onRelease() {
   if (dragging === 'vol') { dragging = null; saveSettings(); }
+  scrub.drag = false;
 }
 function setVolumeFromX(x) {
   const r = UI.vol();
@@ -20404,10 +21070,19 @@ function render(a) {
     renderMenu();
     drawAudioControls();
     drawToast();
+    if (formatMismatch()) drawRotateHint();
     if (dlg.open === 'skin') drawEditorPreview();
     return;
   }
   const camX = lerp(game.prevScroll, game.scroll, a);
+  if (game.state === 'SCRUB') {
+    renderWorld(a, camX);
+    applyContextState(mainCtx);
+    blitVignette();
+    drawScrubUI();
+    drawToast();
+    return;
+  }
   if (game.state === 'LEVEL_TRANSITION') renderTransition(a, camX); else renderWorld(a, camX);
   applyContextState(mainCtx);
   if (game.flash > 0) {
@@ -20419,12 +21094,28 @@ function render(a) {
   drawStateOverlay(a);
   if (game.paused) { drawPause(); drawAudioControls(); }
   drawToast();
+  if (formatMismatch() && (game.state === 'LEVEL_INTRO' || game.paused)) drawRotateHint();
 }
 
+// Querformat gewählt, Gerät hochkant: kleiner Hinweis oben
+function drawRotateHint() {
+  const C = COLORS[game.level], w = Math.min(W - 24, 300), x = (W - w) / 2, y = 96;
+  roundRectPath(x, y, w, 30, 15);
+  ctx.fillStyle = rgba(INK, 0.75);
+  ctx.fill();
+  ctx.strokeStyle = rgba(C.accent, 0.8);
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+  text('Querformat: Handy drehen', W / 2, y + 15, FS.sm, CREAM);
+}
+
+// Stimmung: Der Bildrand wird von Level zu Level dunkler, je näher das Finale rückt
+const moodOf = li => clamp(li / Math.max(1, LEVELS.length - 1), 0, 1);
 function blitVignette() {
   const v = getVignette();
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 0.35 + 0.65 * moodOf(game.level);
   ctx.drawImage(v, 0, 0);
   ctx.restore();
 }
@@ -20624,7 +21315,7 @@ function drawBossBar(C, stroke) {
   const b = boss || bossOut;
   if (!b) return;
   const need = b.need || 1, hits = Math.min(need, b.hits || 0), BC = COLORS[b.li], pop = 1 + 0.12 * game.dodgePop;
-  const top = game.rush ? `Boss ${game.rush.i + 1} von ${LEVELS.length}` : `Level ${game.level + 1} von ${LEVELS.length}`;
+  const top = game.rush ? `Boss ${game.rush.i + 1} von ${RUSH_COUNT}` : `Level ${game.level + 1} von ${LEVELS.length}`;
   text(top, 52, 15, FS.xxs, mix(CREAM, C.accent, 0.4), { align: 'left', stroke, lw: 3 });
   const right = `Treffer ${hits} / ${need}`;
   ctx.font = `bold ${FS.xs}px ${FONT}`;
@@ -20680,18 +21371,28 @@ function drawHelpers(C) {
       poly([[cx + 2, cy - 9], [cx + 7, cy - 6], [cx + 2, cy - 2]], '#9fe6c8');
     }, 'Gratis-Respawn', '#9fe6c8');
   }
-  // laufende Fähigkeit: Balken oben in der Mitte unter den Punkten
-  const k = abil.active;
-  if (k) {
-    const left = abil[TIMED[k]] / CONFIG.ABILITY_FRAMES, w = 150, bx = W / 2 - w / 2, by = 76;
+  // laufende Fähigkeiten: Balken oben in der Mitte unter den Punkten (gute hell, schlechte dunkel darunter)
+  let by = 76;
+  for (const k of [abil.active, abil.bad]) {
+    if (!k) continue;
+    const A = ABILITIES[k], left = abil[TIMED[k]] / CONFIG.ABILITY_FRAMES, w = 150, bx = W / 2 - w / 2;
     roundRectPath(bx, by, w, 18, 9);
-    ctx.fillStyle = rgba(INK, 0.6);
+    ctx.fillStyle = rgba(INK, A.bad ? 0.8 : 0.6);
     ctx.fill();
     roundRectPath(bx, by, Math.max(14, w * left), 18, 9);
-    ctx.fillStyle = ABILITIES[k].color;
+    ctx.fillStyle = A.bad ? shade(A.color, -0.25) : A.color;
     ctx.fill();
-    abilityIcon(k, bx + 12, by + 9, 6, INK);
-    text(`${ABILITIES[k].name} ${Math.ceil(abil[TIMED[k]] / 60)} s`, W / 2 + 6, by + 10, FS.xs, INK);
+    abilityIcon(k, bx + 12, by + 9, 6, A.bad ? CREAM : INK);
+    text(`${A.name} ${Math.ceil(abil[TIMED[k]] / 60)} s`, W / 2 + 6, by + 10, FS.xs, A.bad ? CREAM : INK);
+    by += 24;
+  }
+  // Wind: Ankündigung und laufende Böe als Hinweis oben in der Mitte
+  if (LEVELS[game.level].wind && PIPE_STATES.has(game.state) && wind.state !== 'calm') {
+    const tail = wind.dir > 0, lab = (tail ? 'Rückenwind' : 'Gegenwind') + (wind.state === 'lead' ? ' kommt' : '');
+    const al = wind.state === 'lead' ? 0.55 + 0.45 * Math.abs(Math.sin(frame * 0.2)) : 1;
+    ctx.globalAlpha = al;
+    text((tail ? '» ' : '« ') + lab + (tail ? ' »' : ' «'), W / 2, by + 10, FS.xs, CREAM, { stroke: rgba(INK, 0.7), lw: 4 });
+    ctx.globalAlpha = 1;
   }
 }
 
@@ -20711,6 +21412,18 @@ function drawStateOverlay(a) {
 function drawIntroCard() {
   const L = LEVELS[game.level], C = COLORS[game.level], li = game.level;
   const p = REDUCED_MOTION ? 1 : ease.outBack(Math.min(1, game.t / 22));
+  if (game.pipesStart > 0) {
+    // Fortsetzen: kleine Karte oben, das Level mit den Rohren hinter dem Vogel bleibt sichtbar
+    const P = panelRect(320, 74, 92);
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, game.t / 12);
+    panel(P.x, P.y, P.w, P.h, C);
+    text(`Level ${li + 1}: ${L.name}`, W / 2, P.y + 22, FS.xs, C.accent);
+    text(game.checkpoint && game.checkpoint.frames === 0 ? `Weiter nach Rohr ${game.pipesStart} von ${L.pipeCount}` : `Weiter ab Checkpoint: Rohr ${game.pipesStart} von ${L.pipeCount}`, W / 2, P.y + 46, FS.sm, CREAM);
+    ctx.restore();
+    text('Tippen, klicken oder Leertaste', W / 2, P.y + P.h + 22, FS.sm, CREAM, { stroke: rgba(INK, 0.7), lw: 4 });
+    return;
+  }
   const P = panelRect(340, 210, 386), cx = W / 2;
   ctx.save();
   ctx.translate(cx, P.y + P.h / 2);
@@ -20724,7 +21437,7 @@ function drawIntroCard() {
   const lines = wrapLines(hint, P.w - 44, FS.sm);
   lines.slice(0, 4).forEach((ln, i) => text(ln, cx, P.y + 92 + i * 21, FS.sm, rgba(CREAM, 0.9), { weight: 'normal' }));
   const yy = P.y + P.h - 22;
-  const info = `${L.pipeCount} Rohre, dann ` + (isRushLevel(li) ? 'alle 15 Bosse nacheinander' : `${L.boss.name} (${bossNeedFor(li)} ${bossNeedFor(li) === 1 ? 'Treffer' : 'Treffer'})`) +
+  const info = `${L.pipeCount} Rohre, dann ` + (isRushLevel(li) ? `alle ${RUSH_COUNT} Bosse nacheinander` : `${L.boss.name} (${bossNeedFor(li)} ${bossNeedFor(li) === 1 ? 'Treffer' : 'Treffer'})`) +
     (checkpointAt(li) && !fromCp ? ', Checkpoint bei der Hälfte' : '') + `. ${DIFF_LABEL[diff()]}`;
   const il = wrapLines(info, P.w - 40, FS.xs);
   il.slice(0, 2).forEach((ln, i) => text(ln, cx, yy - (il.length - 1 - i) * 17, FS.xs, mix(CREAM, C.accent, 0.4), { weight: 'normal' }));
@@ -20755,7 +21468,7 @@ function drawBossBanner(a) {
   ctx.save();
   ctx.globalAlpha = a;
   panel(P.x, P.y, P.w, P.h, C);
-  const title = game.rush ? `Boss ${game.rush.i + 1} von ${LEVELS.length}: ${L.boss.name}` : `Boss: ${L.boss.name}`;
+  const title = game.rush ? `Boss ${game.rush.i + 1} von ${RUSH_COUNT}: ${L.boss.name}` : `Boss: ${L.boss.name}`;
   text(title, W / 2, P.y + 22, FS.md, CREAM);
   const n = boss.need, lab = `${PATTERNS[L.boss.pattern].label}. ` + (n === 1 ? 'Weiche einem Angriff aus, er prallt zurück und trifft den Boss.' : `Weiche ${n} Angriffen aus, sie prallen zurück und treffen den Boss.`);
   const ls = wrapLines(lab, P.w - 24, FS.xxs);
@@ -20789,7 +21502,7 @@ function drawDefeat() {
     ctx.save();
     ctx.translate(W / 2, 150);
     ctx.transform(p, 0, 0, p, 0, 0);
-    text(game.rush ? 'Alle 15 Bosse besiegt' : `${name} besiegt`, 0, 0, FS.lg, CREAM, { stroke: rgba(INK, 0.8), lw: 6 });
+    text(game.rush ? `Alle ${RUSH_COUNT} Bosse besiegt` : `${name} besiegt`, 0, 0, FS.lg, CREAM, { stroke: rgba(INK, 0.8), lw: 6 });
     ctx.restore();
     return;
   }
@@ -20848,11 +21561,11 @@ function drawGameOver() {
   text(`Level ${game.level + 1}: ${L.name}, Ursache: ${game.deathCause}`, W / 2, P.y + 64, FS.xs, mix(CREAM, C.accent, 0.4), { weight: 'normal' });
   const b0 = boss || bossOut;
   const reached = game.diedInBoss
-    ? (game.rush ? `Boss ${game.rush.i + 1} von ${LEVELS.length}` : `Boss: ${b0 ? b0.hits : 0} von ${b0 ? b0.need : 0} Treffern`)
+    ? (game.rush ? `Boss ${game.rush.i + 1} von ${RUSH_COUNT}` : `Boss: ${b0 ? b0.hits : 0} von ${b0 ? b0.need : 0} Treffern`)
     : `Rohre: ${game.pipesPassed} von ${pipesFor(game.level)}`;
   text(reached, W / 2, P.y + 98, FS.md, CREAM);
   const note = game.diedInBoss
-    ? (hard ? 'Schwer: Das Level beginnt von vorn' : game.rush && game.rush.cp ? `Der Ansturm geht ab Boss ${CONFIG.RUSH_CHECKPOINT + 1} weiter` : 'Der Bosskampf beginnt neu')
+    ? (hard ? 'Schwer: Das Level beginnt von vorn' : game.rush && game.rush.cp >= 0 ? `Der Ansturm geht ab Boss ${game.rush.cp + 1} weiter` : 'Der Bosskampf beginnt neu')
     : game.checkpoint ? `Checkpoint bei Rohr ${game.checkpoint.pipes}` : 'Neustart am Levelanfang';
   text(note, W / 2, P.y + 126, FS.xxs, rgba(CREAM, 0.75), { weight: 'normal' });
   const locked = game.t < CONFIG.DEATH_PANEL_DELAY + CONFIG.RESTART_LOCK;
@@ -20889,7 +21602,7 @@ function drawVictory() {
   ctx.translate(-W / 2, -(P.y + P.h / 2));
   panel(P.x, P.y, P.w, P.h, C);
   text('Geschafft', W / 2, P.y + 40, FS.title, CREAM);
-  text('Alle 15 Biome und Bosse', W / 2, P.y + 76, FS.sm, mix(CREAM, C.accent, 0.4), { weight: 'normal' });
+  text(`Alle ${LEVELS.length} Biome und Bosse`, W / 2, P.y + 76, FS.sm, mix(CREAM, C.accent, 0.4), { weight: 'normal' });
   const rows = [
     [game.runFromStart ? 'Gesamtzeit' : 'Spielzeit', formatTime(Math.round(game.runFrames * e))],
     ['Abstürze', String(Math.round(game.deaths * e))],
@@ -20980,7 +21693,7 @@ function renderMenuScene() {
 function drawMainMenu() {
   const C = COLORS[game.menuBg.cur], ci = continueLevel(), list = menuButtons();
   text('Flatterflug', W / 2, 62, FS.title + 4, CREAM, { stroke: rgba(INK, 0.8), lw: 7 });
-  text('15 Biome, 15 Bosse', W / 2, 100, FS.sm, mix(CREAM, C.accent, 0.4), { stroke: rgba(INK, 0.6), lw: 3, weight: 'normal' });
+  text(`${LEVELS.length} Biome, ${RUSH_COUNT} Bosse`, W / 2, 100, FS.sm, mix(CREAM, C.accent, 0.4), { stroke: rgba(INK, 0.6), lw: 3, weight: 'normal' });
   const started = progress.open.some((o, i) => i > 0 && o) || progress.beaten.some(Boolean);
   const done = progress.beaten.filter(Boolean).length;
   text(`${done} von ${LEVELS.length} Leveln geschafft`, W / 2, 168, FS.xs, rgba(CREAM, 0.75), { weight: 'normal', stroke: rgba(INK, 0.5), lw: 3 });
@@ -20993,9 +21706,10 @@ function drawMainMenu() {
       }
       case 'levels': button(b, 'Levelauswahl', false, C); break;
       case 'difficulty': button(b, `Schwierigkeit: ${DIFF_LABEL[settings.difficulty]}`, false, C); break;
+      case 'format': button(b, `Bildformat: ${FORMAT_LABEL[settings.format]}`, false, C); break;
       case 'skins': button(b, `Skins (${SKINS.filter(s => skinUnlocked(s.id)).length} von ${SKINS.length})`, false, C); break;
       case 'editor':
-        button(b, progress.completed ? 'Skin-Editor' : 'Skin-Editor (nach Level 15)', false, C, !progress.completed);
+        button(b, progress.completed ? 'Skin-Editor' : `Skin-Editor (nach Level ${LEVELS.length})`, false, C, !progress.completed);
         break;
       case 'ambient': button(b, `Hintergrundpartikel: ${settings.ambient ? 'an' : 'aus'}`, false, C); break;
       case 'reset': {
@@ -21073,10 +21787,13 @@ function drawTile(i, r) {
   const small = r.w < 130;
   circle(r.x + 17, r.y + 18, 11, open ? C.accent : rgba(CREAM, 0.16));
   text(String(i + 1), r.x + 17, r.y + 19, FS.xs, open ? (luminance(C.accent) > 0.3 ? INK : CREAM) : rgba(CREAM, 0.6));
+  // Sehr schmale Kacheln (Handy hochkant, 4 Spalten): Name in eigener Zeile unter der Nummer
+  const tiny = r.w < 100, room = tiny ? r.w - 14 : r.w - 40;
   let nameSize = small ? FS.xs : FS.sm;
   ctx.font = `bold ${nameSize}px ${FONT}`;
-  if (ctx.measureText(L.name).width > r.w - 40) nameSize = FS.xxs;
-  text(L.name, r.x + 33, r.y + 19, nameSize, open ? CREAM : rgba(CREAM, 0.6), { align: 'left', stroke: rgba(INK, 0.5), lw: 3 });
+  while (nameSize > 9 && ctx.measureText(L.name).width > room) { nameSize--; ctx.font = `bold ${nameSize}px ${FONT}`; }
+  if (tiny) text(L.name, r.x + 8, r.y + 39, nameSize, open ? CREAM : rgba(CREAM, 0.6), { align: 'left', stroke: rgba(INK, 0.5), lw: 3 });
+  else text(L.name, r.x + 33, r.y + 19, nameSize, open ? CREAM : rgba(CREAM, 0.6), { align: 'left', stroke: rgba(INK, 0.5), lw: 3 });
   // Farbvorschau: die sechs Biomfarben
   const sw = Math.min(14, (r.w - 20) / 6 - 2);
   ['skyTop', 'skyBottom', 'far', 'near', 'pipe', 'accent'].forEach((k, j) => {
@@ -21258,7 +21975,8 @@ function simStartLevel(li) {
   game.rush = null; game.introShort = false; game.free = { pipe: false, boss: false };
   game.wt = 0; game.updraft = 0; game.scroll = game.prevScroll = 0; game.paused = false; game.waitTap = false;
   game.dodges = 0; game.score = 0; game.flash = 0;
-  wind.t = 0; wind.state = 'calm';
+  wind.t = 0; wind.state = 'calm'; wind.speed = 1;
+  game.introHold = false; game.keepLayout = false;
   bird = makeBird();
   resetAbilities(false);
   game.state = 'PLAYING';
@@ -21286,8 +22004,10 @@ function pipeTarget(last) {
   }
   // Bewegte Lücken: dorthin zielen, wo die Lücke beim Durchflug sein wird, aber höchstens
   // AT.lead Frames vorausgedacht (wie ein Mensch, der die Pendelbewegung sieht)
+  // Gekippte Paare drehen um die Lückenmitte: Beim Durchflug liegt die Mitte des schrägen Kanals im Mittel
+  // genau dort, deshalb zielt der Bot auch hier auf die Lückenmitte.
   if (p.amp) {
-    const tArr = (pipeX(p) - (birdWorldX() + CONFIG.BIRD_W)) / CONFIG.SCROLL_SPEED;
+    const tArr = (pipeX(p) - (birdWorldX() + CONFIG.BIRD_W)) / (CONFIG.SCROLL_SPEED * wind.speed);
     return pipeGapAt(p, game.wt + clamp(tArr, 10, AT.lead)) + p.gap / 2;
   }
   return pipeCenter(p);
@@ -21607,7 +22327,9 @@ function renderAutotest() {
     text(`${Math.round(f * 100)} %`, W / 2, 312, FS.xs, rgba(CREAM, 0.7), { weight: 'normal' });
     return;
   }
-  const rows = AT.rows, narrow = W < 600, fs = narrow ? 10.5 : FS.xs, rowH = narrow ? 27 : 28, top = 86;
+  // Zeilenhöhe passt sich der Zahl der Level an, damit Tabelle, Legende und Knöpfe übereinander Platz haben
+  const rows = AT.rows, narrow = W < 600, top = 86, rowH = Math.min(narrow ? 27 : 28, Math.floor((GROUND_Y - 34 - (top + 22)) / Math.max(1, rows.length) + 1));
+  const fs = Math.min(narrow ? 10.5 : FS.xs, Math.max(9.5, rowH * 0.55));
   // Schmal: Dauer statt Gesamtquote (Rohre, Boss, Ursache und Dauer verlangt die Vorgabe)
   const cols = narrow
     ? [['Level', 8, 'left'], ['Rohre', 0.345, 'right'], ['Boss', 0.47, 'right'], ['Dauer s', 0.655, 'right'], ['Ursache', 0.685, 'left']]

@@ -6,7 +6,7 @@
 // ============================================================
 // inset: so weit dürfen Hindernisse in den Höhenbereich der Lücken hineinragen
 const HZ = { inset: 12 };
-const wind = { t: 0, dir: 1, state: 'calm' };
+const wind = { t: 0, dir: 1, state: 'calm', speed: 1, n: 0 };
 
 // Flugband im Korridor zwischen zwei Rohren: von der höchsten Lückenoberkante bis zur
 // tiefsten Lückenunterkante beider Rohre (bewegte Rohre mit Ausschlag), leicht eingerückt
@@ -25,7 +25,7 @@ const birdRightWorld = () => birdWorldX() + CONFIG.BIRD_W;
 
 function hazardType() { return LEVELS[game.level].hazard.type; }
 function hazardParams() { return LEVELS[game.level].hazard.params || {}; }
-const sightRadius = () => (hazardParams().sight || 0);
+const sightRadius = () => (LEVELS[game.level].dark ? LEVELS[game.level].dark.sight : 0);
 
 // ============================================================
 // Erzeugen: wird beim Spawnen jedes Rohrs aufgerufen
@@ -245,17 +245,29 @@ function hazardRight(h) {
   return h.x + 40;
 }
 
-// Wind: Böen alle 240 Frames für 90 Frames, 45 Frames vorher kündigt Flugsand sie an
+// Wind (ab Level 8): Böen alle every Frames für dur Frames, lead Frames vorher kündigt Flugsand sie an.
+// Rückenwind (dir +1) macht den Flug schneller, Gegenwind (dir -1) langsamer: Das Tempo gleitet weich auf
+// tail bzw. head und zurück. Dazu ein kleiner sichtbarer Versatz des Vogels in Windrichtung.
+// Die Richtung jeder Böe hängt am Layout-Seed: Ein Neustart am Checkpoint und die Bot-Spule sehen denselben Wind.
+const windOf = () => LEVELS[game.level].wind;
 function updateWind(dt) {
-  const P = hazardParams(), every = P.every || 240, dur = P.dur || 90, lead = P.lead || 45;
+  const P = windOf();
+  if (!P) { wind.speed = 1; wind.state = 'calm'; return; }
+  const every = P.every || 240, dur = P.dur || 90, lead = P.lead || 45;
   wind.t += dt;
   const cyc = wind.t % every, gustStart = every - dur, leadStart = gustStart - lead;
   const prev = wind.state;
   wind.state = cyc >= gustStart ? 'gust' : cyc >= leadStart ? 'lead' : 'calm';
-  if (wind.state === 'lead' && prev === 'calm') wind.dir = RNG() < 0.5 ? -1 : 1;
+  if (wind.state === 'lead' && prev === 'calm') {
+    wind.n = Math.floor(wind.t / every);
+    wind.dir = mulberry32(((game.layout ? game.layout.seed : 1) + wind.n * 7919) >>> 0)() < 0.5 ? -1 : 1;
+  }
+  const target = wind.state === 'gust' ? (wind.dir > 0 ? P.tail || 1.3 : P.head || 0.75) : 1;
+  wind.speed += (target - wind.speed) * Math.min(1, 0.05 * dt);
+  if (Math.abs(wind.speed - target) < 0.002) wind.speed = target;
   // Versatz unabhängig von der Bildbreite begrenzen, sonst wären breite Bildschirme schwerer
-  const maxF = Math.min(W * 0.16, 64), maxB = Math.min(birdHomeX() - 26, 64);
-  if (wind.state === 'gust') bird.dx = clamp(bird.dx + wind.dir * (P.drift || 0.8) * dt, -maxB, maxF);
+  const maxF = Math.min(W * 0.08, 30), maxB = Math.min(birdHomeX() - 26, 30);
+  if (wind.state === 'gust') bird.dx = clamp(bird.dx + wind.dir * 0.4 * dt, -maxB, maxF);
   else bird.dx = Math.abs(bird.dx) < 0.5 * dt ? 0 : bird.dx - Math.sign(bird.dx) * 0.5 * dt;
   // Flugsand (spielrelevant, deshalb immer sichtbar)
   if (!SIM.on && wind.state !== 'calm') {
@@ -886,13 +898,19 @@ function drawDarkness(a, strength) {
   logT();
   ctx.strokeStyle = rgba(mix(CREAM, C.accent, 0.35), 0.24 * strength);
   ctx.lineWidth = 1.2;
-  ctx.beginPath();
   for (const p of pipes) {
     const x = pipeXa(p, a) - (lerp(game.prevScroll, game.scroll, a)), gy = lerp(p.pgapY, p.gapY, a);
     if (x > W + 10 || x + PW_ < -10) continue;
-    ctx.moveTo(x, 0); ctx.lineTo(x, gy); ctx.lineTo(x + PW_, gy); ctx.lineTo(x + PW_, 0);
-    ctx.moveTo(x, GROUND_Y); ctx.lineTo(x, gy + p.gap); ctx.lineTo(x + PW_, gy + p.gap); ctx.lineTo(x + PW_, GROUND_Y);
+    // Gekippte Paare: Umriss mitdrehen (um die Lückenmitte), sonst stimmt er nicht mit der Säule überein
+    const ang = p.tamp ? lerp(p.pang, p.ang, a) : 0;
+    ctx.save();
+    if (ang) { const px = x + PW_ / 2, py = gy + p.gap / 2; ctx.translate(px, py); ctx.rotate(ang); ctx.translate(-px, -py); }
+    const ext = ang ? 60 : 0;
+    ctx.beginPath();
+    ctx.moveTo(x, -ext); ctx.lineTo(x, gy); ctx.lineTo(x + PW_, gy); ctx.lineTo(x + PW_, -ext);
+    ctx.moveTo(x, GROUND_Y + ext); ctx.lineTo(x, gy + p.gap); ctx.lineTo(x + PW_, gy + p.gap); ctx.lineTo(x + PW_, GROUND_Y + ext);
+    ctx.stroke();
+    ctx.restore();
   }
-  ctx.stroke();
 }
 

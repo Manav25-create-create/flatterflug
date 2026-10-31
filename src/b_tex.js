@@ -666,7 +666,8 @@ function getVignette() {
     freeCanvas(screenFx.vignette);
     const c = newCanvas(canvas.width, canvas.height);
     paintCanvas(c, view.k, view.k, 0, 0, () => {
-      ctx.fillStyle = rgrad(W / 2, H / 2, H * 0.3, Math.max(H, W) * 0.8, [[0, rgba(INK, 0)], [0.7, rgba(INK, 0.14)], [1, rgba(INK, 0.36)]]);
+      // Doppelt so kräftig wie gebraucht gemalt; blitVignette blendet je nach Level ab (frühe Level heller, späte dunkler)
+      ctx.fillStyle = rgrad(W / 2, H / 2, H * 0.3, Math.max(H, W) * 0.8, [[0, rgba(INK, 0)], [0.7, rgba(INK, 0.22)], [1, rgba(INK, 0.58)]]);
       ctx.fillRect(0, 0, W, H);
     });
     screenFx.vignette = warmUp(c);

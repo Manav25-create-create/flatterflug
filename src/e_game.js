@@ -24,10 +24,11 @@ const CALM_STATES = new Set(['MENU', 'LEVEL_SELECT', 'SKIN_SELECT', 'SKIN_EDITOR
 
 // Fortschritt liegt im Speicher (Datenmodell v4, gespeichert wird weiter unten). Beide Objekte werden nur
 // verändert, nie ersetzt: andere Module halten Referenzen.
-const progress = { open: LEVELS.map((_, i) => i === 0), beaten: LEVELS.map(() => false),
+const progress = { open: LEVELS.map((_, i) => i === 0), beaten: LEVELS.map(() => false), bot: LEVELS.map(() => false),
   completed: false, best: null, customSkins: [], resume: null, savedAt: 0 };
 const DIFFICULTIES = ['leicht', 'mittel', 'schwer'];
-const SETTINGS_DEFAULT = Object.freeze({ skin: 0, ambient: false, volume: 0.8, difficulty: 'mittel' });
+const SETTINGS_DEFAULT = Object.freeze({ skin: 0, ambient: false, volume: 0.8, difficulty: 'mittel', format: 'auto' });
+const FORMATS = ['auto', 'hoch', 'quer'];
 const settings = Object.assign({}, SETTINGS_DEFAULT);
 const highestOpen = () => { let h = 0; progress.open.forEach((o, i) => { if (o) h = i; }); return h; };
 // Vorschlag für "Weiter": das erste offene, noch nicht geschaffte Level, sonst das höchste offene
@@ -45,12 +46,15 @@ function storageSet(key, val) {
   try { window.localStorage.setItem(key, val); } catch (e) { /* ohne Speicher weiter */ }
 }
 
-// ---------- Stand v4 ----------
+// ---------- Stand v5 ----------
 // Ein Stand, lokal und in der Cloud gleich aufgebaut:
-// { v: 4, progress: { open, beaten, completed, best: { frames, deaths } | null, customSkins, resume: { li, pipes, frames } | null, savedAt },
-//   settings: { skin, ambient, volume, difficulty } }
+// { v: 5, names: [Levelnamen], progress: { open, beaten, bot, completed, best: { frames, deaths } | null, customSkins,
+//   resume: { li, pipes, frames, seed } | null, savedAt }, settings: { skin, ambient, volume, difficulty, format } }
+// Die Arrays liegen in der Reihenfolge von names; beim Laden wird per Name auf LEVELS abgebildet. So überstehen
+// Spielstände jede künftige Umsortierung. v4 (15 Level) wird über V4_LEVEL_ORDER übernommen.
 // Jede Quelle (lokal, Cloud, Hot-Reload, alte Fassungen) gilt als unzuverlässig und wird geprüft und bereinigt.
 // Levelreihenfolgen alter Fassungen: deren Arrays werden per Levelname auf LEVELS abgebildet
+const V4_LEVEL_ORDER = ['Wiese', 'Wolken', 'Ozean', 'Dschungel', 'Wüste', 'Sumpf', 'Eis', 'Kristall', 'Höhle', 'Sturm', 'Uhrwerk', 'Neon', 'Asche', 'Lava', 'Weltraum'];
 const V3_LEVEL_ORDER = ['Wiese', 'Eis', 'Lava', 'Dschungel', 'Wüste', 'Ozean', 'Sturm', 'Höhle', 'Sumpf', 'Neon', 'Kristall', 'Wolken', 'Uhrwerk', 'Asche', 'Weltraum'];
 const V2_LEVEL_ORDER = ['Wiese', 'Eis', 'Lava', 'Dschungel', 'Wüste', 'Ozean', 'Sturm', 'Höhle', 'Neon', 'Weltraum'];
 const MAX_CUSTOM_SKINS = 8;
@@ -89,7 +93,7 @@ function unionSkins(first, second) {
 // Fortschritt in der Form v4. names: Levelnamen in der Reihenfolge, in der die Arrays von d liegen (fehlt: aktuelle Reihenfolge)
 function cleanProgress(d, names) {
   const N = LEVELS.length;
-  const p = { open: LEVELS.map((_, i) => i === 0), beaten: LEVELS.map(() => false), completed: false, best: null, customSkins: [], resume: null, savedAt: 0 };
+  const p = { open: LEVELS.map((_, i) => i === 0), beaten: LEVELS.map(() => false), bot: LEVELS.map(() => false), completed: false, best: null, customSkins: [], resume: null, savedAt: 0 };
   if (!isRec(d)) return p;
   const at = i => (names ? (i < names.length ? levelIndexOf(names[i]) : -1) : (i < N ? i : -1));
   const each = (arr, fn) => {
@@ -97,6 +101,7 @@ function cleanProgress(d, names) {
   };
   each(d.open, j => { p.open[j] = true; });
   each(d.beaten, j => { p.beaten[j] = true; });
+  each(d.bot, j => { p.bot[j] = true; p.open[j] = true; });
   // Ein geschafftes Level ist offen, das in der aktuellen Reihenfolge folgende ebenso
   p.beaten.forEach((b, j) => { if (b) { p.open[j] = true; if (j + 1 < N) p.open[j + 1] = true; } });
   p.completed = d.completed === true;
@@ -104,7 +109,11 @@ function cleanProgress(d, names) {
   const b = d.best, frames = isRec(b) ? natIn(b.frames, 1e9) : -1;
   if (frames > 0) p.best = { frames, deaths: Math.max(0, natIn(b.deaths, 1e6)) };
   const r = d.resume, li = isRec(r) && Number.isInteger(r.li) && r.li >= 0 ? at(r.li) : -1;
-  if (li >= 0 && natIn(r.pipes, 1e4) >= 0 && natIn(r.frames, 1e9) >= 0) p.resume = { li, pipes: natIn(r.pipes, 1e4), frames: natIn(r.frames, 1e9) };
+  if (li >= 0 && natIn(r.pipes, 1e4) >= 0 && natIn(r.frames, 1e9) >= 0) {
+    p.resume = { li, pipes: natIn(r.pipes, 1e4), frames: natIn(r.frames, 1e9) };
+    const sd = natIn(r.seed, 4294967295);
+    if (sd > 0) p.resume.seed = sd;
+  }
   p.savedAt = Math.max(0, natIn(d.savedAt, Number.MAX_SAFE_INTEGER));
   return p;
 }
@@ -117,10 +126,25 @@ function cleanSettings(d) {
   s.ambient = d.ambient === true;
   if (typeof d.volume === 'number' && Number.isFinite(d.volume)) s.volume = clamp(d.volume, 0, 1);
   if (DIFFICULTIES.includes(d.difficulty)) s.difficulty = d.difficulty;
+  if (FORMATS.includes(d.format)) s.format = d.format;
   return s;
 }
-// Kanonische Form (feste Schlüsselreihenfolge, gleiche Stände ergeben gleiches JSON). Klein und begrenzt: 2 x 15 Werte, höchstens 8 Skins.
-const saveRecord = st => ({ v: 4, progress: st.progress, settings: st.settings });
+// Kanonische Form (feste Schlüsselreihenfolge, gleiche Stände ergeben gleiches JSON). Klein und begrenzt: 3 x 20 Werte, höchstens 8 Skins.
+const saveRecord = st => ({ v: 5, names: LEVELS.map(L => L.name), progress: st.progress, settings: st.settings });
+// Levelnamen eines gelesenen Stands: v5 trägt sie selbst, v4 nutzt die feste alte Reihenfolge
+function savedNames(d) {
+  if (Number(d.v) === 4) return V4_LEVEL_ORDER;
+  const n = d.names;
+  return Array.isArray(n) && n.length <= 64 && n.every(x => typeof x === 'string') ? n : null;
+}
+// Stand eines Datensatzes (v4 oder v5) bereinigt lesen; v4 hatte 15 Level und ein anderes Ende: Bestzeit und
+// "durchgespielt" gelten nicht weiter, alles andere (offen, geschafft, Skins, Einstellungen) wird übernommen
+function recordToSave(d) {
+  if (!isRec(d) || !isRec(d.progress)) return null;
+  const p = cleanProgress(d.progress, savedNames(d));
+  if (Number(d.v) === 4) { p.best = null; p.completed = false; }
+  return { progress: p, settings: cleanSettings(d.settings) };
+}
 const saveJSON = st => JSON.stringify(saveRecord(st));
 // Inhalt ohne savedAt: entscheidet, ob sich wirklich etwas geändert hat
 const saveContent = st => JSON.stringify(saveRecord({ progress: Object.assign({}, st.progress, { savedAt: 0 }), settings: st.settings }));
@@ -129,14 +153,17 @@ const currentSave = () => ({ progress: cleanProgress(progress), settings: cleanS
 
 // Bereinigten Stand in die bestehenden Objekte übernehmen (nie ersetzen)
 function applyProgress(p) {
-  for (const k of ['open', 'beaten']) { progress[k].length = LEVELS.length; p[k].forEach((v, i) => { progress[k][i] = v; }); }
+  for (const k of ['open', 'beaten', 'bot']) { progress[k].length = LEVELS.length; p[k].forEach((v, i) => { progress[k][i] = v; }); }
   progress.completed = p.completed;
   progress.best = p.best ? { frames: p.best.frames, deaths: p.best.deaths } : null;
   progress.customSkins.splice(0, progress.customSkins.length, ...p.customSkins);
   progress.resume = p.resume ? Object.assign({}, p.resume) : null;
   progress.savedAt = p.savedAt;
 }
-function applySettings(s) { Object.assign(settings, s); }
+function applySettings(s) {
+  Object.assign(settings, s);
+  if (VIEWFMT.format !== settings.format) { VIEWFMT.format = settings.format; resize(); }
+}
 function applySave(st) { applyProgress(st.progress); applySettings(st.settings); }
 
 // Zwei Stände zusammenführen (a: dieses Gerät, b: Cloud oder Hot-Reload). Offene und geschaffte Level vereinigt,
@@ -146,7 +173,8 @@ function mergeSaves(a, b) {
   const A = a.progress, B = b.progress, bNewer = B.savedAt > A.savedAt, newer = bNewer ? b : a, older = bNewer ? a : b;
   return {
     progress: cleanProgress({
-      open: A.open.map((o, i) => o || B.open[i]), beaten: A.beaten.map((x, i) => x || B.beaten[i]), completed: A.completed || B.completed,
+      open: A.open.map((o, i) => o || B.open[i]), beaten: A.beaten.map((x, i) => x || B.beaten[i]), bot: A.bot.map((x, i) => x || B.bot[i]),
+      completed: A.completed || B.completed,
       best: !A.best ? B.best : !B.best || A.best.frames <= B.best.frames ? A.best : B.best,
       customSkins: unionSkins(newer.progress.customSkins, older.progress.customSkins),
       resume: newer.progress.resume, savedAt: Math.max(A.savedAt, B.savedAt)
@@ -181,14 +209,19 @@ function progressFromV2(d) {
 const localSave = { content: '' };      // Inhalt (ohne savedAt) des zuletzt gesicherten Stands
 function readLocalSave() {
   const d = parseSave(storageGet(CONFIG.STORAGE_KEY));
-  return isRec(d) && isRec(d.progress) ? { progress: cleanProgress(d.progress), settings: cleanSettings(d.settings) } : null;
+  return isRec(d) && Number(d.v) === 5 ? recordToSave(d) : null;
+}
+// Stand v4 (15 Level) aus dem alten Schlüssel; der alte Schlüssel bleibt unangetastet
+function readV4Save() {
+  const d = parseSave(storageGet(CONFIG.STORAGE_KEY_V4));
+  return isRec(d) && Number(d.v) === 4 ? recordToSave(d) : null;
 }
 function writeLocalSave(st) { storageSet(CONFIG.STORAGE_KEY, saveJSON(st)); }
 
 // Lokalen Fortschritt laden: v4, sonst Übernahme aus v3, sonst aus v2. Synchron, wirft nie.
 function loadProgress() {
   try {
-    const own = readLocalSave();
+    const own = readLocalSave() || readV4Save();
     let p = own && own.progress;
     if (!p) { const d = parseSave(storageGet(CONFIG.STORAGE_KEY_V3)); if (isRec(d)) p = progressFromV3(d); }
     if (!p) { const d = parseSave(storageGet(CONFIG.STORAGE_KEY_OLD)); if (isRec(d)) p = progressFromV2(d); }
@@ -198,7 +231,7 @@ function loadProgress() {
 // Einstellungen laden: aus dem Stand v4, sonst aus dem alten Einstellungsschlüssel (Schwierigkeit dann "mittel")
 function loadSettings() {
   try {
-    const own = readLocalSave(), old = own ? null : parseSave(storageGet(CONFIG.SETTINGS_KEY));
+    const own = readLocalSave() || readV4Save(), old = own ? null : parseSave(storageGet(CONFIG.SETTINGS_KEY));
     if (own) applySettings(own.settings);
     else if (isRec(old)) applySettings(cleanSettings(old));
   } catch (e) { /* Standardwerte */ }
@@ -222,10 +255,11 @@ function saveSettings() { commitSave(); }
 
 // Setzt auch den Cloud-Stand zurück: Ist die Cloud noch nicht gelesen, wird dort danach nichts zurückgeholt, sondern überschrieben.
 function resetProgress() {
-  progress.open.length = progress.beaten.length = LEVELS.length;
+  progress.open.length = progress.beaten.length = progress.bot.length = LEVELS.length;
   progress.open.fill(false);
   progress.open[0] = true;
   progress.beaten.fill(false);
+  progress.bot.fill(false);
   progress.completed = false;
   progress.best = null;
   progress.customSkins.length = 0;
@@ -244,6 +278,7 @@ function tryCode(li, value) {
   const v = String(value || '').trim().toUpperCase();
   if (!Number.isInteger(li) || li < 0 || li >= LEVELS.length) return { ok: false, text: 'Unbekanntes Level.' };
   if (v.toLowerCase() === CONFIG.PASSWORD || (v.length === 4 && v === LEVEL_CODES[li])) {
+    if (v.toLowerCase() === CONFIG.PASSWORD) progress.bot[li] = true;   // Startpunkt per Spule wählbar
     unlockLevel(li);
     return { ok: true, li, text: `Level ${li + 1} freigeschaltet: ${LEVELS[li].name}` };
   }
@@ -256,9 +291,10 @@ function unlockLevel(li) {
 }
 
 // Fortsetzungspunkt für den Spielablauf: Level li, bereits passierte Rohre, gespielte Frames. Beide speichern sofort.
-function setResume(li, pipes, frames) {
+function setResume(li, pipes, frames, seed) {
   if (!Number.isInteger(li) || li < 0 || li >= LEVELS.length) return false;
   progress.resume = { li, pipes: Math.max(0, natIn(pipes, 1e4)), frames: Math.max(0, natIn(frames, 1e9)) };
+  if (natIn(seed, 4294967295) > 0) progress.resume.seed = natIn(seed, 4294967295);
   saveProgress();
   return true;
 }
@@ -280,7 +316,7 @@ function adoptHotData(data) {
     if (!isRec(old)) return;
     const cur = currentSave();
     let p = null, s = cur.settings;
-    if (data.v === 4) {
+    if (data.v === 4 || data.v === 5) {
       const names = Array.isArray(data.names) && data.names.length <= 64 && data.names.every(n => typeof n === 'string') ? data.names : null;
       p = cleanProgress(old, names);
       if (isRec(data.settings)) s = cleanSettings(data.settings);
@@ -333,9 +369,10 @@ async function cloudPull() {
       cloudSave.reads++;
     } while (SIM.on);
     const raw = snap && snap.exists && typeof snap.data === 'function' ? snap.data() : null;
-    if (isRec(raw) && Number(raw.v) > 4) { cloudStop(); return; }    // Stand einer neueren Fassung: nicht anfassen
+    if (isRec(raw) && Number(raw.v) > 5) { cloudStop(); return; }    // Stand einer neueren Fassung: nicht anfassen
     const local = currentSave();
-    const remote = isRec(raw) ? { progress: cleanProgress(raw.progress), settings: isRec(raw.settings) ? cleanSettings(raw.settings) : local.settings } : null;
+    const rec = isRec(raw) ? recordToSave(raw) : null;
+    const remote = rec ? { progress: rec.progress, settings: isRec(raw.settings) ? rec.settings : local.settings } : null;
     const merged = remote && !cloudSave.resetPending ? mergeSaves(local, remote) : local;
     cloudSave.resetPending = false;
     applySave(merged);
@@ -345,7 +382,7 @@ async function cloudPull() {
     localSave.content = saveContent(merged);
     writeLocalSave(merged);
     // Vergleichsbasis ist der Cloud-Stand in kanonischer Form; unvollständige Dokumente werden überschrieben
-    cloudSave.json = remote && raw.v === 4 && isRec(raw.progress) && isRec(raw.settings) ? saveJSON(remote) : '';
+    cloudSave.json = remote && raw.v === 5 && isRec(raw.progress) && isRec(raw.settings) ? saveJSON(remote) : '';
     cloudSave.ready = true;
     cloudSave.wait = 0;
     cloudSave.dirty = saveJSON(merged) !== cloudSave.json;
@@ -463,6 +500,7 @@ const checkpointAt = li => (diff() === 'schwer' ? 0 : checkpointFor(li));
 
 function startFromMenu(li) {
   if (li < 0 || li >= LEVELS.length || !progress.open[li]) return;
+  if (progress.bot[li] && !SIM.on) { enterScrub(li); return; }
   game.runFrames = 0;
   game.deaths = 0;
   game.runFromStart = li === 0;
@@ -471,7 +509,7 @@ function startFromMenu(li) {
   const r = progress.resume, cpAt = checkpointAt(li);
   if (r && r.li === li && cpAt && r.pipes === cpAt) {
     game.level = li;
-    game.checkpoint = { pipes: r.pipes, frames: r.frames };
+    game.checkpoint = { pipes: r.pipes, frames: r.frames, seed: r.seed || 0 };
     game.runFromStart = false;
     startLevel(li, 'checkpoint');
     return;
@@ -495,11 +533,20 @@ function startLevel(li, mode) {
   game.trans = null; game.paused = false; game.flash = 0; game.updraft = 0; game.wt = 0;
   game.defeat = null; game.waitTap = false; game.bossNote = 0;
   game.free = { pipe: diff() === 'leicht', boss: diff() === 'leicht' };
-  wind.t = 0; wind.state = 'calm';
+  wind.t = 0; wind.state = 'calm'; wind.speed = 1;
+  game.introHold = false;
   const y = mode === 'next' && bird ? bird.y : CONFIG.BIRD_START_Y;
   bird = makeBird();
   bird.y = bird.hoverY = bird.py = y;
   resetAbilities(mode !== 'menu');
+  // Fortsetzen am Checkpoint: gleiches Layout wie im Lauf davor, die passierten Rohre stehen hinter dem Vogel,
+  // die Welt wartet, bis getippt wird
+  if (cp && cp.pipes > 0) {
+    if (!game.layout || game.layout.li !== li || (cp.seed && game.layout.seed !== cp.seed)) game.layout = makeLayout(li, cp.seed || newSeed());
+    const hy = clamp(resumeWorldAt(cp.pipes), 110, GROUND_Y - 110);
+    bird.y = bird.py = bird.hoverY = bird.hoverTarget = hy - CONFIG.BIRD_H / 2;
+    game.introHold = true;
+  }
   if (mode !== 'next') particles = [];
   ambient.list = [];
   game.dark = sightRadius() ? 1 : 0;
@@ -521,14 +568,15 @@ function beginPlay() {
 function onPipePassed() {
   const li = game.level, cpAt = checkpointAt(li);
   if (cpAt && !game.checkpoint && game.pipesPassed === cpAt) {
-    game.checkpoint = { pipes: game.pipesPassed, frames: game.runFrames };
-    if (!SIM.on) setResume(li, game.pipesPassed, game.runFrames);   // auch nach dem Schließen ab hier weiter
+    const seed = game.layout ? game.layout.seed : 0;
+    game.checkpoint = { pipes: game.pipesPassed, frames: game.runFrames, seed };
+    if (!SIM.on) setResume(li, game.pipesPassed, game.runFrames, seed);   // auch nach dem Schließen ab hier weiter
     setState('CHECKPOINT');
     sfx('checkpoint');
   }
 }
 
-// Bosskampf beginnen. Im letzten Level der Boss-Ansturm: alle 15 Bosse nacheinander.
+// Bosskampf beginnen. Im letzten Level der Boss-Ansturm: die 19 Bosse der Level davor nacheinander.
 function beginBossIntro(restart) {
   shots = []; attacks = []; hazards = []; pickups = []; pipes = []; bossOut = null;
   ghostInfo.clear();
@@ -537,8 +585,8 @@ function beginBossIntro(restart) {
   game.updraft = 0;
   game.introShort = false;
   if (isRushLevel(game.level)) {
-    if (!restart || !game.rush) game.rush = { i: 0, cp: false };
-    else game.rush.i = game.rush.cp && diff() !== 'schwer' ? CONFIG.RUSH_CHECKPOINT : 0;
+    if (!restart || !game.rush) game.rush = { i: 0, cp: -1 };
+    else game.rush.i = game.rush.cp >= 0 && diff() !== 'schwer' ? game.rush.cp : 0;
     boss = makeBoss(game.rush.i);
   } else {
     game.rush = null;
@@ -563,7 +611,7 @@ function restartBoss() {
 
 // Der aktuelle Boss hat genug Treffer: im Ansturm kommt der nächste, sonst ist das Level geschafft
 function bossBeaten() {
-  if (game.rush && game.rush.i < LEVELS.length - 1) rushNextBoss();
+  if (game.rush && game.rush.i < RUSH_COUNT - 1) rushNextBoss();
   else defeatBoss();
 }
 function rushNextBoss() {
@@ -577,9 +625,9 @@ function rushNextBoss() {
   shake(3, 12);
   sfx('levelup');
   game.rush.i++;
-  if (game.rush.i >= CONFIG.RUSH_CHECKPOINT && !game.rush.cp && diff() !== 'schwer') {
-    game.rush.cp = true;
-    if (!SIM.on) showToast(`Checkpoint: Ab jetzt geht es bei Boss ${CONFIG.RUSH_CHECKPOINT + 1} weiter`, 150);
+  if (CONFIG.RUSH_CHECKPOINTS.includes(game.rush.i) && game.rush.cp < game.rush.i && diff() !== 'schwer') {
+    game.rush.cp = game.rush.i;
+    if (!SIM.on) showToast(`Checkpoint: Ab jetzt geht es bei Boss ${game.rush.i + 1} weiter`, 150);
   }
   shots = []; attacks = [];
   ghostInfo.clear();
@@ -668,8 +716,8 @@ function killBird(cause) {
   game.deaths++;
   game.deathCause = cause || 'Rohr';
   game.diedInBoss = bossPhase;
-  abil.slow = abil.phantom = abil.shrink = 0;
-  abil.active = null;
+  abil.slow = abil.phantom = abil.shrink = abil.tempo = abil.grow = abil.lead = 0;
+  abil.active = abil.bad = null;
   flash(0.45, CREAM);
   shake(CONFIG.SHAKE_HIT[0], CONFIG.SHAKE_HIT[1]);
   sfx('death');
@@ -681,6 +729,7 @@ function killBird(cause) {
 
 function goMenu(state) {
   game.paused = false;
+  game.ghostBird = false;
   pipes = []; hazards = []; pickups = []; shots = []; attacks = []; boss = null; bossOut = null; particles = [];
   game.rush = null;
   const sel = clamp(game.level, 0, LEVELS.length - 1);
@@ -691,6 +740,193 @@ function goMenu(state) {
   shakeFx.t = 0;
   setState(state || 'MENU');
   Music.setTrack('menu');
+}
+
+// ============================================================
+// Bot-Spule: In einem Level, das mit dem Passwort freigeschaltet wurde, wählt man den Startpunkt.
+// Der Bot fliegt das Level vorab einmal (ohne Bild, unverwundbar) und jede Position wird
+// aufgezeichnet. Unten liegt eine Spule: Ziehen spult vor oder zurück, der blasse Vogel fliegt
+// dabei die Sprünge des Bots im Zeitraffer. Gestartet wird nach dem letzten passierten Rohr
+// (wie am Checkpoint, die Rohre dahinter bleiben stehen) oder direkt beim Boss.
+// ============================================================
+const scrub = { li: -1, seed: 0, n: 0, rec: null, pass: [], cur: 0, target: 0, drag: false, play: false, base: 0, layout: null };
+const SCRUB_KEYS = ['scroll', 'wt', 'y', 'vy', 'rot', 'ft', 'dx'];
+
+function recordGhost(li, seed) {
+  const savedRNG = RNG, cap = 24000, rec = {}, pass = [];
+  for (const k of SCRUB_KEYS) rec[k] = new Float32Array(cap);
+  let n = 0;
+  SIM.on = true; SIM.noAbilities = true; SIM.god = true;
+  try {
+    RNG = mulberry32((seed ^ 0x5bd1e995) >>> 0);
+    startLevel(li, 'menu');
+    game.layout = makeLayout(li, seed);
+    game.keepLayout = true;
+    game.state = 'PLAYING';
+    game.t = 0;
+    const D = AT.delay, hist = [];
+    let lastFlap = 0, target = 270, passed = 0;
+    flapBird();
+    while (n < cap) {
+      const y = birdCY();
+      target = pipeTarget(target);
+      hist.push({ f: n, y, vy: bird.vy, target });
+      if (hist.length > D + 6) hist.shift();
+      const o = hist.length > D ? hist[hist.length - 1 - D] : null;
+      if (o && o.f > lastFlap && o.vy >= AT.flapVy && o.y > o.target) { flapBird(); lastFlap = n; }
+      update();
+      rec.scroll[n] = game.scroll; rec.wt[n] = game.wt; rec.y[n] = bird.y; rec.vy[n] = bird.vy;
+      rec.rot[n] = bird.rot; rec.ft[n] = bird.flapT; rec.dx[n] = bird.dx;
+      while (passed < game.pipesPassed) { pass.push(n); passed++; }
+      n++;
+      if (BOSS_STATES.has(game.state)) break;
+    }
+  } finally { SIM.on = false; SIM.noAbilities = false; SIM.god = false; RNG = savedRNG; }
+  return { rec, n, pass, layout: game.layout };
+}
+
+function enterScrub(li) {
+  const seed = newSeed(), r = recordGhost(li, seed);
+  Object.assign(scrub, { li, seed, rec: r.rec, n: r.n, pass: r.pass, layout: r.layout, base: r.layout.base, cur: 0, target: 0, drag: false, play: false });
+  pipes = []; hazards = []; pickups = []; shots = []; attacks = []; boss = null; bossOut = null; particles = [];
+  game.level = li; game.paused = false; game.checkpoint = null; game.rush = null;
+  game.pipesStart = game.pipesPassed = game.pipesSpawned = 0;
+  game.layout = scrub.layout;
+  wind.speed = 1; wind.state = 'calm';
+  bird = makeBird();
+  game.ghostBird = true;
+  setState('SCRUB');
+  Music.setTrack('level' + li);
+  showScrubFrame(0);
+}
+
+// Aufgezeichnete Stelle f zeigen: Kamera, Vogel und die Rohre dort aus dem Layout
+function showScrubFrame(f) {
+  const R = scrub.rec, i = clamp(Math.round(f), 0, scrub.n - 1);
+  game.scroll = game.prevScroll = R.scroll[i];
+  game.wt = R.wt[i];
+  bird.y = bird.py = R.y[i]; bird.vy = R.vy[i]; bird.rot = bird.prot = R.rot[i]; bird.flapT = R.ft[i];
+  bird.dx = R.dx[i]; bird.x = bird.px = birdHomeX() + bird.dx; bird.idle = false; bird.dead = false;
+  game.layout = scrub.layout;
+  game.layout.base = scrub.base;
+  game.layout.shiftFrom = Infinity;
+  pipes = [];
+  const list = scrub.layout.list;
+  for (let idx = 0; idx < list.length; idx++) {
+    const sl = slotOf(idx);
+    if (sl + PW_ + 40 < game.scroll) continue;
+    if (sl > game.scroll + W + CONFIG.PIPE_SPAWN_AHEAD) break;
+    game.pipesSpawned = idx;
+    spawnPipe(true);
+  }
+  game.pipesPassed = scrubPipes(i);
+}
+// Wie viele Rohre der Bot bis Bild f passiert hat
+function scrubPipes(f) { let j = 0; while (j < scrub.pass.length && scrub.pass[j] <= f) j++; return j; }
+const scrubAtBoss = () => scrub.cur >= scrub.n - 2;
+
+function updateScrub() {
+  if (scrub.play && !scrub.drag) {
+    scrub.cur = scrub.target = Math.min(scrub.n - 1, scrub.cur + 1);
+    if (scrub.cur >= scrub.n - 1) scrub.play = false;
+  } else {
+    const d = scrub.target - scrub.cur;
+    // Zeitraffer: große Sprünge schnell, kurz vor dem Ziel noch mindestens dreifaches Tempo
+    if (Math.abs(d) > 0.5) scrub.cur += Math.sign(d) * Math.min(Math.abs(d), Math.max(3, Math.abs(d) * 0.08));
+    else scrub.cur = scrub.target;
+  }
+  showScrubFrame(scrub.cur);
+  updateAmbient(1);
+}
+
+// Spule: Leiste unten im Bodenstreifen, Knopf "Hier starten" darüber
+function scrubBar() { const x0 = 32, x1 = W - 32; return { x0, x1, y: GROUND_Y + 28, hit: { x: x0 - 16, y: GROUND_Y + 4, w: x1 - x0 + 32, h: 52 } }; }
+const scrubStartBtn = () => { const w = Math.min(190, W - 40); return { id: 'start', x: W - w - 16, y: GROUND_Y - 58, w, h: 42 }; };
+const scrubFrameAtX = x => { const b = scrubBar(); return clamp((x - b.x0) / (b.x1 - b.x0), 0, 1) * (scrub.n - 1); };
+const scrubXAt = f => { const b = scrubBar(); return b.x0 + (b.x1 - b.x0) * f / Math.max(1, scrub.n - 1); };
+
+// Zum Rohr davor oder danach springen (Pfeiltasten)
+function scrubStep(dir) {
+  const j = scrubPipes(scrub.target);
+  if (dir > 0) scrub.target = j < scrub.pass.length ? scrub.pass[j] + 1 : scrub.n - 1;
+  else scrub.target = j >= 2 ? scrub.pass[j - 2] + 1 : 0;
+  scrub.play = false;
+}
+
+function startFromScrub() {
+  const li = scrub.li, N = pipesFor(li), j = scrubPipes(scrub.cur), atBoss = scrubAtBoss() || j >= N;
+  game.ghostBird = false;
+  game.runFromStart = false; game.runFrames = 0; game.deaths = 0;
+  if (atBoss) {
+    game.checkpoint = null;
+    startLevel(li, 'menu');
+    game.pipesSpawned = game.pipesPassed = game.shownPipes = N;
+    game.score = game.shownScore = N;
+    beginBossIntro(false);
+    game.waitTap = true;
+    return;
+  }
+  if (j === 0) {
+    game.checkpoint = null;
+    startLevel(li, 'menu');
+    game.layout = scrub.layout;
+    game.keepLayout = true;
+    return;
+  }
+  // Wie am Checkpoint: Ein Absturz führt wieder hierher
+  game.layout = scrub.layout;
+  game.checkpoint = { pipes: j, frames: 0, seed: scrub.seed };
+  startLevel(li, 'checkpoint');
+}
+
+function scrubPress(p) {
+  if (inRect(p, UI.back())) { game.ghostBird = false; goMenu('LEVEL_SELECT'); return; }
+  if (inRect(p, scrubStartBtn())) { startFromScrub(); return; }
+  if (inRect(p, scrubBar().hit)) { scrub.drag = true; scrub.play = false; scrub.target = scrubFrameAtX(p.x); return; }
+  scrub.play = !scrub.play;
+}
+function scrubKey(code) {
+  if (code === 'Escape') { game.ghostBird = false; goMenu('LEVEL_SELECT'); }
+  else if (code === 'ArrowRight') scrubStep(1);
+  else if (code === 'ArrowLeft') scrubStep(-1);
+  else if (code === 'Enter' || code === 'NumpadEnter' || code === 'Space') startFromScrub();
+  else if (code === 'KeyP') scrub.play = !scrub.play;
+}
+
+function drawScrubUI() {
+  const C = COLORS[scrub.li], L = LEVELS[scrub.li], b = scrubBar(), N = pipesFor(scrub.li), j = scrubPipes(scrub.cur);
+  // Kopf
+  iconButton(UI.back(), backIcon);
+  text('Startpunkt wählen', W / 2, 26, FS.md, CREAM, { stroke: rgba(INK, 0.75), lw: 5 });
+  const sub = wrapLines(`Level ${scrub.li + 1}: ${L.name}. Zieh an der Spule unten, der blasse Vogel fliegt den Weg im Zeitraffer. Tippen ins Bild spielt ab.`, W - 110, FS.xxs);
+  sub.slice(0, 2).forEach((l, i) => text(l, W / 2, 50 + i * 14, FS.xxs, rgba(CREAM, 0.85), { weight: 'normal', stroke: rgba(INK, 0.6), lw: 3 }));
+  // Leiste
+  roundRectPath(b.x0 - 6, b.y - 7, b.x1 - b.x0 + 12, 14, 7);
+  ctx.fillStyle = rgba(INK, 0.65);
+  ctx.fill();
+  const cx = scrubXAt(scrub.cur);
+  roundRectPath(b.x0 - 4, b.y - 4, Math.max(8, cx - b.x0 + 4), 8, 4);
+  ctx.fillStyle = rgba(C.accent, 0.85);
+  ctx.fill();
+  const cpAt = checkpointFor(scrub.li);
+  scrub.pass.forEach((f, k) => {
+    const x = scrubXAt(f), big = cpAt && k + 1 === cpAt;
+    line(x, b.y - (big ? 9 : 5), x, b.y + (big ? 9 : 5), rgba(CREAM, big ? 0.95 : 0.55), big ? 2 : 1);
+  });
+  // Boss am Ende
+  const ex = b.x1;
+  poly([[ex, b.y - 9], [ex + 8, b.y], [ex, b.y + 9], [ex - 8, b.y]], C.accent);
+  // Griff
+  circle(cx + 1, b.y + 2, 11, rgba(INK, 0.35));
+  circle(cx, b.y, 11, scrub.drag ? mix(C.accent, CREAM, 0.4) : CREAM);
+  circle(cx, b.y, 5, C.accent);
+  // Beschriftung und Startknopf
+  const atBoss = scrubAtBoss() || j >= N;
+  const lab = atBoss ? 'Start beim Boss' : j === 0 ? 'Start am Anfang' : `Start nach Rohr ${j} von ${N}`;
+  text(lab, 16, GROUND_Y - 37, FS.sm, CREAM, { align: 'left', stroke: rgba(INK, 0.75), lw: 4 });
+  const sb = scrubStartBtn();
+  if (sb.x > 16 + 190) button(sb, 'Hier starten', true, C);
+  else { sb.y = GROUND_Y - 108; button(sb, 'Hier starten', true, C); }
 }
 
 // ============================================================
@@ -772,21 +1008,26 @@ function update() {
   switch (game.state) {
     case 'MENU': case 'LEVEL_SELECT': case 'SKIN_SELECT': case 'SKIN_EDITOR': case 'AUTOTEST':
       break;
+    case 'SCRUB':
+      updateScrub();
+      break;
     case 'LEVEL_INTRO':
-      game.scroll += S;
+      if (!game.introHold) game.scroll += S;
       updateBird('hover', 1);
       updateParticles(1);
       updateAmbient(1);
       break;
     case 'PLAYING': case 'CHECKPOINT': {
       updateAbilityTimers();
+      // Zeitlupe (abil.tf) bremst nur die Welt; der Vogel fliegt mit normalem Tempo und normaler Schwerkraft.
+      // Wind und die schlechte Kugel "Tempo" ändern, wie schnell die Welt vorbeizieht.
       const dt = abil.tf;
-      game.scroll += S * dt;
+      if (LEVELS[li].wind) updateWind(dt);
+      game.scroll += S * dt * wind.speed * abil.sf;
       game.wt += dt;
       game.runFrames++;
-      if (hazardType() === 'wind') updateWind(dt);
       updateHazards(dt);
-      updateBird('physics', dt);
+      updateBird('physics', 1);
       updatePipes(dt);
       updatePickups(dt);
       updateParticles(dt);
@@ -906,13 +1147,14 @@ const UI = {
 function menuCol() { const w = Math.min(320, W - 40); return { x: Math.round((W - w) / 2), w }; }
 function menuButtons() {
   const c = menuCol(), list = [];
-  list.push({ id: 'play', x: c.x, y: 184, w: c.w, h: 50 });
-  list.push({ id: 'levels', x: c.x, y: 244, w: c.w, h: 40 });
-  list.push({ id: 'skins', x: c.x, y: 292, w: c.w, h: 40 });
-  list.push({ id: 'editor', x: c.x, y: 340, w: c.w, h: 40 });
-  list.push({ id: 'difficulty', x: c.x, y: 392, w: c.w, h: 36 });
-  list.push({ id: 'ambient', x: c.x, y: 436, w: c.w, h: 32 });
-  if (progress.open.some((o, i) => i > 0 && o) || progress.beaten.some(Boolean)) list.push({ id: 'reset', x: c.x + c.w / 2 - 80, y: 476, w: 160, h: 26 });
+  list.push({ id: 'play', x: c.x, y: 180, w: c.w, h: 48 });
+  list.push({ id: 'levels', x: c.x, y: 236, w: c.w, h: 38 });
+  list.push({ id: 'skins', x: c.x, y: 280, w: c.w, h: 38 });
+  list.push({ id: 'editor', x: c.x, y: 324, w: c.w, h: 38 });
+  list.push({ id: 'difficulty', x: c.x, y: 370, w: c.w, h: 32 });
+  list.push({ id: 'format', x: c.x, y: 408, w: c.w, h: 32 });
+  list.push({ id: 'ambient', x: c.x, y: 446, w: c.w, h: 28 });
+  if (progress.open.some((o, i) => i > 0 && o) || progress.beaten.some(Boolean)) list.push({ id: 'reset', x: c.x + c.w / 2 - 80, y: 482, w: 160, h: 24 });
   return list;
 }
 const audioVisible = () => MENU_STATES.has(game.state) || game.paused;
@@ -928,7 +1170,7 @@ function gridLayout(n, colsWide, colsNarrow, maxH) {
   const usedH = rows * th + (rows - 1) * gap, oy = y0 + Math.max(0, (ah - usedH) / 2) * 0.4;
   return { cols, rows, tw, th, rect: i => ({ x: x0 + (i % cols) * (tw + gap), y: oy + Math.floor(i / cols) * (th + gap), w: tw, h: th }) };
 }
-const tileGrid = () => gridLayout(LEVELS.length, 5, 3, 150);
+const tileGrid = () => gridLayout(LEVELS.length, 5, 4, 150);
 const skinList = () => [SKINS[0]].concat(LEVELS.map(L => SKINS[L.skinId])).map(s => ({ skin: s, id: s.id, custom: false })).concat(progress.customSkins.map(s => ({ skin: s, id: 'c:' + s.name, custom: true })));
 const skinGrid = () => gridLayout(skinList().length, 6, 4, 118);
 function panelRect(w, h, cy) { const pw = Math.min(w, W - 24); return { x: Math.round((W - pw) / 2), y: Math.round(cy - h / 2), w: pw, h }; }
@@ -976,6 +1218,7 @@ function onKey(code) {
     return;
   }
   switch (game.state) {
+    case 'SCRUB': scrubKey(code); break;
     case 'MENU': menuKey(code); break;
     case 'LEVEL_SELECT': gridKey(code, LEVELS.length, tileGrid().cols, i => tileActivate(i), () => goMenu()); break;
     case 'SKIN_SELECT': gridKey(code, skinList().length, skinGrid().cols, i => skinActivate(i), () => goMenu()); break;
@@ -1031,7 +1274,7 @@ function menuAction(id) {
     case 'play': startFromMenu(continueLevel()); break;
     case 'levels': openLevelSelect(); break;
     case 'skins': game.sel = Math.max(0, skinList().findIndex(e => e.id === settings.skin)); setState('SKIN_SELECT'); break;
-    case 'editor': if (progress.completed) openSkinEditor(); else showToast('Der Skin-Editor wird nach Level 15 freigeschaltet'); break;
+    case 'editor': if (progress.completed) openSkinEditor(); else showToast(`Der Skin-Editor wird nach Level ${LEVELS.length} freigeschaltet`); break;
     case 'ambient': settings.ambient = !settings.ambient; saveSettings(); break;
     case 'difficulty': {
       settings.difficulty = DIFFICULTIES[(DIFFICULTIES.indexOf(settings.difficulty) + 1) % DIFFICULTIES.length];
@@ -1039,8 +1282,27 @@ function menuAction(id) {
       showToast(DIFF_HINT[settings.difficulty], 200);
       break;
     }
+    case 'format': {
+      settings.format = FORMATS[(FORMATS.indexOf(settings.format) + 1) % FORMATS.length];
+      applyFormat();
+      saveSettings();
+      showToast(FORMAT_HINT[settings.format], 200);
+      break;
+    }
     case 'reset': if (game.resetArm > 0) resetProgress(); else game.resetArm = 180; break;
   }
+}
+const FORMAT_LABEL = { auto: 'Automatisch', hoch: 'Hochformat', quer: 'Querformat' };
+const FORMAT_HINT = {
+  auto: 'Bildformat folgt dem Fenster: am Monitor breit, am Handy so, wie du es hältst',
+  hoch: 'Hochformat: schmales Spielfeld, auch am Monitor',
+  quer: 'Querformat: breites Spielfeld. Am Handy quer halten'
+};
+// Einstellung auf die Bildberechnung übertragen und neu skalieren
+function applyFormat() {
+  if (VIEWFMT.format === settings.format) return;
+  VIEWFMT.format = settings.format;
+  resize();
 }
 function openLevelSelect() { game.sel = continueLevel(); setState('LEVEL_SELECT'); }
 
@@ -1075,6 +1337,7 @@ function onPress(p, src) {
     return;
   }
   switch (game.state) {
+    case 'SCRUB': scrubPress(p); break;
     case 'MENU': { const b = hitList(menuButtons(), p); if (b) menuAction(b.id); break; }
     case 'LEVEL_SELECT': {
       if (inRect(p, UI.back())) { goMenu(); break; }
@@ -1122,6 +1385,7 @@ function onPress(p, src) {
 function onDrag(p) {
   mouse = p;
   if (dragging === 'vol') setVolumeFromX(p.x);
+  if (game.state === 'SCRUB' && scrub.drag) scrub.target = scrubFrameAtX(p.x);
   if (game.state === 'LEVEL_SELECT' && !dialogOpen()) {
     const g = tileGrid();
     for (let i = 0; i < LEVELS.length; i++) if (inRect(p, g.rect(i))) { if (game.sel !== i) { game.sel = i; if (progress.open[i]) setMenuBg(i); } break; }
@@ -1129,6 +1393,7 @@ function onDrag(p) {
 }
 function onRelease() {
   if (dragging === 'vol') { dragging = null; saveSettings(); }
+  scrub.drag = false;
 }
 function setVolumeFromX(x) {
   const r = UI.vol();
@@ -1399,10 +1664,19 @@ function render(a) {
     renderMenu();
     drawAudioControls();
     drawToast();
+    if (formatMismatch()) drawRotateHint();
     if (dlg.open === 'skin') drawEditorPreview();
     return;
   }
   const camX = lerp(game.prevScroll, game.scroll, a);
+  if (game.state === 'SCRUB') {
+    renderWorld(a, camX);
+    applyContextState(mainCtx);
+    blitVignette();
+    drawScrubUI();
+    drawToast();
+    return;
+  }
   if (game.state === 'LEVEL_TRANSITION') renderTransition(a, camX); else renderWorld(a, camX);
   applyContextState(mainCtx);
   if (game.flash > 0) {
@@ -1414,12 +1688,28 @@ function render(a) {
   drawStateOverlay(a);
   if (game.paused) { drawPause(); drawAudioControls(); }
   drawToast();
+  if (formatMismatch() && (game.state === 'LEVEL_INTRO' || game.paused)) drawRotateHint();
 }
 
+// Querformat gewählt, Gerät hochkant: kleiner Hinweis oben
+function drawRotateHint() {
+  const C = COLORS[game.level], w = Math.min(W - 24, 300), x = (W - w) / 2, y = 96;
+  roundRectPath(x, y, w, 30, 15);
+  ctx.fillStyle = rgba(INK, 0.75);
+  ctx.fill();
+  ctx.strokeStyle = rgba(C.accent, 0.8);
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+  text('Querformat: Handy drehen', W / 2, y + 15, FS.sm, CREAM);
+}
+
+// Stimmung: Der Bildrand wird von Level zu Level dunkler, je näher das Finale rückt
+const moodOf = li => clamp(li / Math.max(1, LEVELS.length - 1), 0, 1);
 function blitVignette() {
   const v = getVignette();
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 0.35 + 0.65 * moodOf(game.level);
   ctx.drawImage(v, 0, 0);
   ctx.restore();
 }
@@ -1619,7 +1909,7 @@ function drawBossBar(C, stroke) {
   const b = boss || bossOut;
   if (!b) return;
   const need = b.need || 1, hits = Math.min(need, b.hits || 0), BC = COLORS[b.li], pop = 1 + 0.12 * game.dodgePop;
-  const top = game.rush ? `Boss ${game.rush.i + 1} von ${LEVELS.length}` : `Level ${game.level + 1} von ${LEVELS.length}`;
+  const top = game.rush ? `Boss ${game.rush.i + 1} von ${RUSH_COUNT}` : `Level ${game.level + 1} von ${LEVELS.length}`;
   text(top, 52, 15, FS.xxs, mix(CREAM, C.accent, 0.4), { align: 'left', stroke, lw: 3 });
   const right = `Treffer ${hits} / ${need}`;
   ctx.font = `bold ${FS.xs}px ${FONT}`;
@@ -1675,18 +1965,28 @@ function drawHelpers(C) {
       poly([[cx + 2, cy - 9], [cx + 7, cy - 6], [cx + 2, cy - 2]], '#9fe6c8');
     }, 'Gratis-Respawn', '#9fe6c8');
   }
-  // laufende Fähigkeit: Balken oben in der Mitte unter den Punkten
-  const k = abil.active;
-  if (k) {
-    const left = abil[TIMED[k]] / CONFIG.ABILITY_FRAMES, w = 150, bx = W / 2 - w / 2, by = 76;
+  // laufende Fähigkeiten: Balken oben in der Mitte unter den Punkten (gute hell, schlechte dunkel darunter)
+  let by = 76;
+  for (const k of [abil.active, abil.bad]) {
+    if (!k) continue;
+    const A = ABILITIES[k], left = abil[TIMED[k]] / CONFIG.ABILITY_FRAMES, w = 150, bx = W / 2 - w / 2;
     roundRectPath(bx, by, w, 18, 9);
-    ctx.fillStyle = rgba(INK, 0.6);
+    ctx.fillStyle = rgba(INK, A.bad ? 0.8 : 0.6);
     ctx.fill();
     roundRectPath(bx, by, Math.max(14, w * left), 18, 9);
-    ctx.fillStyle = ABILITIES[k].color;
+    ctx.fillStyle = A.bad ? shade(A.color, -0.25) : A.color;
     ctx.fill();
-    abilityIcon(k, bx + 12, by + 9, 6, INK);
-    text(`${ABILITIES[k].name} ${Math.ceil(abil[TIMED[k]] / 60)} s`, W / 2 + 6, by + 10, FS.xs, INK);
+    abilityIcon(k, bx + 12, by + 9, 6, A.bad ? CREAM : INK);
+    text(`${A.name} ${Math.ceil(abil[TIMED[k]] / 60)} s`, W / 2 + 6, by + 10, FS.xs, A.bad ? CREAM : INK);
+    by += 24;
+  }
+  // Wind: Ankündigung und laufende Böe als Hinweis oben in der Mitte
+  if (LEVELS[game.level].wind && PIPE_STATES.has(game.state) && wind.state !== 'calm') {
+    const tail = wind.dir > 0, lab = (tail ? 'Rückenwind' : 'Gegenwind') + (wind.state === 'lead' ? ' kommt' : '');
+    const al = wind.state === 'lead' ? 0.55 + 0.45 * Math.abs(Math.sin(frame * 0.2)) : 1;
+    ctx.globalAlpha = al;
+    text((tail ? '» ' : '« ') + lab + (tail ? ' »' : ' «'), W / 2, by + 10, FS.xs, CREAM, { stroke: rgba(INK, 0.7), lw: 4 });
+    ctx.globalAlpha = 1;
   }
 }
 
@@ -1706,6 +2006,18 @@ function drawStateOverlay(a) {
 function drawIntroCard() {
   const L = LEVELS[game.level], C = COLORS[game.level], li = game.level;
   const p = REDUCED_MOTION ? 1 : ease.outBack(Math.min(1, game.t / 22));
+  if (game.pipesStart > 0) {
+    // Fortsetzen: kleine Karte oben, das Level mit den Rohren hinter dem Vogel bleibt sichtbar
+    const P = panelRect(320, 74, 92);
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, game.t / 12);
+    panel(P.x, P.y, P.w, P.h, C);
+    text(`Level ${li + 1}: ${L.name}`, W / 2, P.y + 22, FS.xs, C.accent);
+    text(game.checkpoint && game.checkpoint.frames === 0 ? `Weiter nach Rohr ${game.pipesStart} von ${L.pipeCount}` : `Weiter ab Checkpoint: Rohr ${game.pipesStart} von ${L.pipeCount}`, W / 2, P.y + 46, FS.sm, CREAM);
+    ctx.restore();
+    text('Tippen, klicken oder Leertaste', W / 2, P.y + P.h + 22, FS.sm, CREAM, { stroke: rgba(INK, 0.7), lw: 4 });
+    return;
+  }
   const P = panelRect(340, 210, 386), cx = W / 2;
   ctx.save();
   ctx.translate(cx, P.y + P.h / 2);
@@ -1719,7 +2031,7 @@ function drawIntroCard() {
   const lines = wrapLines(hint, P.w - 44, FS.sm);
   lines.slice(0, 4).forEach((ln, i) => text(ln, cx, P.y + 92 + i * 21, FS.sm, rgba(CREAM, 0.9), { weight: 'normal' }));
   const yy = P.y + P.h - 22;
-  const info = `${L.pipeCount} Rohre, dann ` + (isRushLevel(li) ? 'alle 15 Bosse nacheinander' : `${L.boss.name} (${bossNeedFor(li)} ${bossNeedFor(li) === 1 ? 'Treffer' : 'Treffer'})`) +
+  const info = `${L.pipeCount} Rohre, dann ` + (isRushLevel(li) ? `alle ${RUSH_COUNT} Bosse nacheinander` : `${L.boss.name} (${bossNeedFor(li)} ${bossNeedFor(li) === 1 ? 'Treffer' : 'Treffer'})`) +
     (checkpointAt(li) && !fromCp ? ', Checkpoint bei der Hälfte' : '') + `. ${DIFF_LABEL[diff()]}`;
   const il = wrapLines(info, P.w - 40, FS.xs);
   il.slice(0, 2).forEach((ln, i) => text(ln, cx, yy - (il.length - 1 - i) * 17, FS.xs, mix(CREAM, C.accent, 0.4), { weight: 'normal' }));
@@ -1750,7 +2062,7 @@ function drawBossBanner(a) {
   ctx.save();
   ctx.globalAlpha = a;
   panel(P.x, P.y, P.w, P.h, C);
-  const title = game.rush ? `Boss ${game.rush.i + 1} von ${LEVELS.length}: ${L.boss.name}` : `Boss: ${L.boss.name}`;
+  const title = game.rush ? `Boss ${game.rush.i + 1} von ${RUSH_COUNT}: ${L.boss.name}` : `Boss: ${L.boss.name}`;
   text(title, W / 2, P.y + 22, FS.md, CREAM);
   const n = boss.need, lab = `${PATTERNS[L.boss.pattern].label}. ` + (n === 1 ? 'Weiche einem Angriff aus, er prallt zurück und trifft den Boss.' : `Weiche ${n} Angriffen aus, sie prallen zurück und treffen den Boss.`);
   const ls = wrapLines(lab, P.w - 24, FS.xxs);
@@ -1784,7 +2096,7 @@ function drawDefeat() {
     ctx.save();
     ctx.translate(W / 2, 150);
     ctx.transform(p, 0, 0, p, 0, 0);
-    text(game.rush ? 'Alle 15 Bosse besiegt' : `${name} besiegt`, 0, 0, FS.lg, CREAM, { stroke: rgba(INK, 0.8), lw: 6 });
+    text(game.rush ? `Alle ${RUSH_COUNT} Bosse besiegt` : `${name} besiegt`, 0, 0, FS.lg, CREAM, { stroke: rgba(INK, 0.8), lw: 6 });
     ctx.restore();
     return;
   }
@@ -1843,11 +2155,11 @@ function drawGameOver() {
   text(`Level ${game.level + 1}: ${L.name}, Ursache: ${game.deathCause}`, W / 2, P.y + 64, FS.xs, mix(CREAM, C.accent, 0.4), { weight: 'normal' });
   const b0 = boss || bossOut;
   const reached = game.diedInBoss
-    ? (game.rush ? `Boss ${game.rush.i + 1} von ${LEVELS.length}` : `Boss: ${b0 ? b0.hits : 0} von ${b0 ? b0.need : 0} Treffern`)
+    ? (game.rush ? `Boss ${game.rush.i + 1} von ${RUSH_COUNT}` : `Boss: ${b0 ? b0.hits : 0} von ${b0 ? b0.need : 0} Treffern`)
     : `Rohre: ${game.pipesPassed} von ${pipesFor(game.level)}`;
   text(reached, W / 2, P.y + 98, FS.md, CREAM);
   const note = game.diedInBoss
-    ? (hard ? 'Schwer: Das Level beginnt von vorn' : game.rush && game.rush.cp ? `Der Ansturm geht ab Boss ${CONFIG.RUSH_CHECKPOINT + 1} weiter` : 'Der Bosskampf beginnt neu')
+    ? (hard ? 'Schwer: Das Level beginnt von vorn' : game.rush && game.rush.cp >= 0 ? `Der Ansturm geht ab Boss ${game.rush.cp + 1} weiter` : 'Der Bosskampf beginnt neu')
     : game.checkpoint ? `Checkpoint bei Rohr ${game.checkpoint.pipes}` : 'Neustart am Levelanfang';
   text(note, W / 2, P.y + 126, FS.xxs, rgba(CREAM, 0.75), { weight: 'normal' });
   const locked = game.t < CONFIG.DEATH_PANEL_DELAY + CONFIG.RESTART_LOCK;
@@ -1884,7 +2196,7 @@ function drawVictory() {
   ctx.translate(-W / 2, -(P.y + P.h / 2));
   panel(P.x, P.y, P.w, P.h, C);
   text('Geschafft', W / 2, P.y + 40, FS.title, CREAM);
-  text('Alle 15 Biome und Bosse', W / 2, P.y + 76, FS.sm, mix(CREAM, C.accent, 0.4), { weight: 'normal' });
+  text(`Alle ${LEVELS.length} Biome und Bosse`, W / 2, P.y + 76, FS.sm, mix(CREAM, C.accent, 0.4), { weight: 'normal' });
   const rows = [
     [game.runFromStart ? 'Gesamtzeit' : 'Spielzeit', formatTime(Math.round(game.runFrames * e))],
     ['Abstürze', String(Math.round(game.deaths * e))],
@@ -1975,7 +2287,7 @@ function renderMenuScene() {
 function drawMainMenu() {
   const C = COLORS[game.menuBg.cur], ci = continueLevel(), list = menuButtons();
   text('Flatterflug', W / 2, 62, FS.title + 4, CREAM, { stroke: rgba(INK, 0.8), lw: 7 });
-  text('15 Biome, 15 Bosse', W / 2, 100, FS.sm, mix(CREAM, C.accent, 0.4), { stroke: rgba(INK, 0.6), lw: 3, weight: 'normal' });
+  text(`${LEVELS.length} Biome, ${RUSH_COUNT} Bosse`, W / 2, 100, FS.sm, mix(CREAM, C.accent, 0.4), { stroke: rgba(INK, 0.6), lw: 3, weight: 'normal' });
   const started = progress.open.some((o, i) => i > 0 && o) || progress.beaten.some(Boolean);
   const done = progress.beaten.filter(Boolean).length;
   text(`${done} von ${LEVELS.length} Leveln geschafft`, W / 2, 168, FS.xs, rgba(CREAM, 0.75), { weight: 'normal', stroke: rgba(INK, 0.5), lw: 3 });
@@ -1988,9 +2300,10 @@ function drawMainMenu() {
       }
       case 'levels': button(b, 'Levelauswahl', false, C); break;
       case 'difficulty': button(b, `Schwierigkeit: ${DIFF_LABEL[settings.difficulty]}`, false, C); break;
+      case 'format': button(b, `Bildformat: ${FORMAT_LABEL[settings.format]}`, false, C); break;
       case 'skins': button(b, `Skins (${SKINS.filter(s => skinUnlocked(s.id)).length} von ${SKINS.length})`, false, C); break;
       case 'editor':
-        button(b, progress.completed ? 'Skin-Editor' : 'Skin-Editor (nach Level 15)', false, C, !progress.completed);
+        button(b, progress.completed ? 'Skin-Editor' : `Skin-Editor (nach Level ${LEVELS.length})`, false, C, !progress.completed);
         break;
       case 'ambient': button(b, `Hintergrundpartikel: ${settings.ambient ? 'an' : 'aus'}`, false, C); break;
       case 'reset': {
@@ -2068,10 +2381,13 @@ function drawTile(i, r) {
   const small = r.w < 130;
   circle(r.x + 17, r.y + 18, 11, open ? C.accent : rgba(CREAM, 0.16));
   text(String(i + 1), r.x + 17, r.y + 19, FS.xs, open ? (luminance(C.accent) > 0.3 ? INK : CREAM) : rgba(CREAM, 0.6));
+  // Sehr schmale Kacheln (Handy hochkant, 4 Spalten): Name in eigener Zeile unter der Nummer
+  const tiny = r.w < 100, room = tiny ? r.w - 14 : r.w - 40;
   let nameSize = small ? FS.xs : FS.sm;
   ctx.font = `bold ${nameSize}px ${FONT}`;
-  if (ctx.measureText(L.name).width > r.w - 40) nameSize = FS.xxs;
-  text(L.name, r.x + 33, r.y + 19, nameSize, open ? CREAM : rgba(CREAM, 0.6), { align: 'left', stroke: rgba(INK, 0.5), lw: 3 });
+  while (nameSize > 9 && ctx.measureText(L.name).width > room) { nameSize--; ctx.font = `bold ${nameSize}px ${FONT}`; }
+  if (tiny) text(L.name, r.x + 8, r.y + 39, nameSize, open ? CREAM : rgba(CREAM, 0.6), { align: 'left', stroke: rgba(INK, 0.5), lw: 3 });
+  else text(L.name, r.x + 33, r.y + 19, nameSize, open ? CREAM : rgba(CREAM, 0.6), { align: 'left', stroke: rgba(INK, 0.5), lw: 3 });
   // Farbvorschau: die sechs Biomfarben
   const sw = Math.min(14, (r.w - 20) / 6 - 2);
   ['skyTop', 'skyBottom', 'far', 'near', 'pipe', 'accent'].forEach((k, j) => {

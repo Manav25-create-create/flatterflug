@@ -10,10 +10,10 @@
 // keinen Ton und verändert den Fortschritt nicht.
 // ============================================================
 const AT = { runs: 50, delay: 6, flapVy: 0, predict: 0, lead: 30, results: null, li: 0, phase: 'pipe', run: 0, done: false, active: false, started: 0, ms: 0, rows: null, savedRNG: null };
-// Ziel: Die Level werden Schritt für Schritt schwerer. Rohrphase: 92 % in Level 1, pro Level 2,2 Punkte
-// weniger (Level 15: 61 %), erlaubt sind 10 Punkte Abweichung (50 Läufe streuen um etwa 6 Punkte).
+// Ziel: Die Level werden Schritt für Schritt schwerer. Rohrphase: 92 % in Level 1, pro Level 1,8 Punkte
+// weniger (Level 20: 58 %), erlaubt sind 10 Punkte Abweichung (50 Läufe streuen um etwa 6 Punkte).
 // Bosskampf: mindestens 60 % (der Bot plant seine Flugbahn und ist beim Ausweichen sehr stark).
-const AT_TARGET = li => 92 - 2.2 * li, AT_BAND = 10, AT_BOSS_MIN = 60;
+const AT_TARGET = li => 92 - 1.8 * li, AT_BAND = 10, AT_BOSS_MIN = 60;
 
 function isAutotest() {
   try {
@@ -33,7 +33,8 @@ function simStartLevel(li) {
   game.rush = null; game.introShort = false; game.free = { pipe: false, boss: false };
   game.wt = 0; game.updraft = 0; game.scroll = game.prevScroll = 0; game.paused = false; game.waitTap = false;
   game.dodges = 0; game.score = 0; game.flash = 0;
-  wind.t = 0; wind.state = 'calm';
+  wind.t = 0; wind.state = 'calm'; wind.speed = 1;
+  game.introHold = false; game.keepLayout = false;
   bird = makeBird();
   resetAbilities(false);
   game.state = 'PLAYING';
@@ -61,8 +62,10 @@ function pipeTarget(last) {
   }
   // Bewegte Lücken: dorthin zielen, wo die Lücke beim Durchflug sein wird, aber höchstens
   // AT.lead Frames vorausgedacht (wie ein Mensch, der die Pendelbewegung sieht)
+  // Gekippte Paare drehen um die Lückenmitte: Beim Durchflug liegt die Mitte des schrägen Kanals im Mittel
+  // genau dort, deshalb zielt der Bot auch hier auf die Lückenmitte.
   if (p.amp) {
-    const tArr = (pipeX(p) - (birdWorldX() + CONFIG.BIRD_W)) / CONFIG.SCROLL_SPEED;
+    const tArr = (pipeX(p) - (birdWorldX() + CONFIG.BIRD_W)) / (CONFIG.SCROLL_SPEED * wind.speed);
     return pipeGapAt(p, game.wt + clamp(tArr, 10, AT.lead)) + p.gap / 2;
   }
   return pipeCenter(p);
@@ -313,7 +316,7 @@ function finishAutotest() {
   game.state = 'AUTOTEST';
   game.t = 0;
   try {
-    console.log(`Flatterflug Autotest: ${AT.runs} Läufe pro Level und Boss, Breite ${W}. Ziel Rohrphase 92 % in Level 1, pro Level 2,2 Punkte weniger (±${AT_BAND}), Bosskampf ab ${AT_BOSS_MIN} %`);
+    console.log(`Flatterflug Autotest: ${AT.runs} Läufe pro Level und Boss, Breite ${W}. Ziel Rohrphase 92 % in Level 1, pro Level 1,8 Punkte weniger (±${AT_BAND}), Bosskampf ab ${AT_BOSS_MIN} %`);
     if (console.table) console.table(AT.rows.map(r => ({ Level: r.name, 'Rohre %': r.pipe, 'Boss %': r.boss, 'Gesamt %': r.total, 'Häufigste Ursache': r.cause, 'Dauer Rohre s': r.pipeSec, 'Dauer Boss s': r.bossSec, Bewertung: r.verdict })));
   } catch (e) { /* ohne Konsole */ }
 }
@@ -382,7 +385,9 @@ function renderAutotest() {
     text(`${Math.round(f * 100)} %`, W / 2, 312, FS.xs, rgba(CREAM, 0.7), { weight: 'normal' });
     return;
   }
-  const rows = AT.rows, narrow = W < 600, fs = narrow ? 10.5 : FS.xs, rowH = narrow ? 27 : 28, top = 86;
+  // Zeilenhöhe passt sich der Zahl der Level an, damit Tabelle, Legende und Knöpfe übereinander Platz haben
+  const rows = AT.rows, narrow = W < 600, top = 86, rowH = Math.min(narrow ? 27 : 28, Math.floor((GROUND_Y - 34 - (top + 22)) / Math.max(1, rows.length) + 1));
+  const fs = Math.min(narrow ? 10.5 : FS.xs, Math.max(9.5, rowH * 0.55));
   // Schmal: Dauer statt Gesamtquote (Rohre, Boss, Ursache und Dauer verlangt die Vorgabe)
   const cols = narrow
     ? [['Level', 8, 'left'], ['Rohre', 0.345, 'right'], ['Boss', 0.47, 'right'], ['Dauer s', 0.655, 'right'], ['Ursache', 0.685, 'left']]

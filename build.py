@@ -7,11 +7,12 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(ROOT, 'src')
 PARTS = ['a_config.js', 'a_core.js', 'b_tex.js', 'b_layers.js', 'b_ground.js', 'b_sprites.js', 'b_scene.js',
          'b_art2.js', 'b_art3_bosses.js', 'b_art5_scene_a.js', 'b_art6_scene_b.js', 'b_art7_scene_c.js',
+         'b_art8_bloom.js', 'b_art9_autumn.js', 'b_art10_shadow.js',
          'c_world.js', 'c3_hazards.js', 'c2_boss.js', 'c4_abilities.js', 'c5_skins.js', 'd_music.js',
          'e_game.js', 'f_autotest.js', 'z_boot.js']
 rd = lambda n: open(os.path.join(SRC, n), encoding='utf-8').read()
 head, tail = rd('_head.html'), rd('_tail.html')
-body = ''.join(rd(p) for p in PARTS)
+body = ''.join(rd(p) for p in PARTS if os.path.exists(os.path.join(SRC, p)))
 EXPOSE = rd('_expose.js') if os.path.exists(os.path.join(SRC, '_expose.js')) else ''
 standalone = head + body + tail
 open(os.path.join(ROOT, 'index.html'), 'w', encoding='utf-8').write(standalone)

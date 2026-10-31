@@ -18,7 +18,12 @@ const SKINS = [
   { id: 12, name: 'Wattebausch', shape: 'round', colors: { body: '#f1ebf6', accent: '#f6b77c', wing: '#b9a5dd' }, wing: 'cloud', eye: 'sleepy', trail: 'cloud' },
   { id: 13, name: 'Zahnradfink', shape: 'segmented', colors: { body: '#c18f46', accent: '#d97a4a', wing: '#7a5a2e' }, wing: 'gear', eye: 'monocle', trail: 'cog' },
   { id: 14, name: 'Aschefalke', shape: 'angular', colors: { body: '#4a3d3a', accent: '#f08a3c', wing: '#2b2323' }, wing: 'flame', eye: 'slit', trail: 'ember' },
-  { id: 15, name: 'Sternenpilot', shape: 'round', colors: { body: '#8f9bb9', accent: '#f0b35b', wing: '#3c2b61' }, wing: 'feather', eye: 'helmet', trail: 'star' }
+  { id: 15, name: 'Sternenpilot', shape: 'round', colors: { body: '#8f9bb9', accent: '#f0b35b', wing: '#3c2b61' }, wing: 'feather', eye: 'helmet', trail: 'star' },
+  { id: 16, name: 'Kirschblüte', shape: 'round', colors: { body: '#f2a7c3', accent: '#fff1c9', wing: '#d6799f' }, wing: 'feather', eye: 'big', trail: 'leaf' },
+  { id: 17, name: 'Lagunenfink', shape: 'round', colors: { body: '#3fb7a8', accent: '#ffd6a0', wing: '#ff8a65' }, wing: 'fin', eye: 'round', trail: 'bubble' },
+  { id: 18, name: 'Laubrascher', shape: 'segmented', colors: { body: '#c8632f', accent: '#f3c76a', wing: '#7a3f22' }, wing: 'leaf', eye: 'sleepy', trail: 'leaf' },
+  { id: 19, name: 'Tempelwächter', shape: 'angular', colors: { body: '#a39778', accent: '#e0c060', wing: '#5e5a48' }, wing: 'feather', eye: 'monocle', trail: 'sand' },
+  { id: 20, name: 'Nachtschatten', shape: 'angular', colors: { body: '#3a2a46', accent: '#b06cff', wing: '#1d1226' }, wing: 'bat', eye: 'glow', trail: 'glow' }
 ];
 const SKIN_LABELS = {
   shape: { round: 'Rund', angular: 'Kantig', segmented: 'Segmentiert' },
@@ -390,6 +395,7 @@ function drawBird(a) {
   let alpha = 1;
   if (bird.inv > 0 && !bird.dead) alpha = Math.floor(bird.inv / 4) % 2 ? 0.3 : 1;
   if (abil.phantom > 0) alpha *= 0.5;
+  if (game.ghostBird) alpha *= GHOST.alpha;       // Bot-Spule: blass wie ein abgewehrtes Geschoss
   ellipse(cx + SHADOW.x * 0.7, cy + SHADOW.y * 0.7, 15 * s, 10 * s, rot * 0.5, rgba(INK, CONFIG.SHADOW_ALPHA * alpha));
   const spr = getBirdSprite(sk, wingPhase(), bird.dead), c = Math.cos(rot) * s, sn = Math.sin(rot) * s;
   ctx.save();

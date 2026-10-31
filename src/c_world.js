@@ -1,7 +1,8 @@
 // ============================================================
 // Laufzeitobjekte. Weltkoordinaten: x wächst nach rechts, der linke
 // Bildrand liegt bei game.scroll. Alles Bewegte wird mit dem
-// Zeitfaktor dt fortgeschrieben (1 normal, 0.6 in Zeitlupe).
+// Zeitfaktor dt fortgeschrieben (1 normal, 0.6 in Zeitlupe; die Zeitlupe
+// bremst nur die Welt, der Vogel fliegt in normalem Tempo).
 // ============================================================
 let bird = null, pipes = [], hazards = [], pickups = [], shots = [], attacks = [], particles = [], boss = null;
 const PHYS = LEVELS.map(L => Object.assign(
@@ -189,7 +190,7 @@ function flapBird() {
   return true;
 }
 
-const birdScale = () => (abil.shrink > 0 ? CONFIG.SHRINK_SCALE : 1);
+const birdScale = () => (abil.shrink > 0 ? CONFIG.SHRINK_SCALE : abil.grow > 0 ? CONFIG.GROW_SCALE : 1);
 
 // mode: 'physics' (Spieler), 'hover' (Levelstart), 'auto' (nach dem Boss), 'dead'
 function updateBird(mode, dt) {
@@ -200,7 +201,7 @@ function updateBird(mode, dt) {
   if (bird.ceilT > 0) bird.ceilT--;
   if (mode === 'hover') {
     bird.idle = true;
-    bird.hoverY += (CONFIG.BIRD_START_Y - bird.hoverY) * 0.04;
+    bird.hoverY += ((bird.hoverTarget || CONFIG.BIRD_START_Y) - bird.hoverY) * 0.04;
     bird.y = bird.hoverY + Math.sin(frame * 0.06) * 5;
     bird.vy = 0;
     bird.rot += (Math.sin(frame * 0.06 + 1) * 0.06 - bird.rot) * 0.2;
@@ -219,7 +220,7 @@ function updateBird(mode, dt) {
     }
     bird.rot += (1.45 - bird.rot) * 0.12;
   } else {
-    bird.vy = Math.min(bird.vy + P.GRAVITY * dt, P.MAX_FALL_SPEED);
+    bird.vy = Math.min(bird.vy + P.GRAVITY * gravityFactor() * dt, P.MAX_FALL_SPEED);
     // Aufwind: zieht den Vogel mit konstanten -0.25 px pro Frame nach oben
     bird.y += (bird.vy + game.updraft) * dt;
     // Decke: sanft abprallen statt sterben
@@ -266,9 +267,13 @@ function wingPhase() {
 
 // ============================================================
 // Rohre: generische Objekte mit type 'pipe'. Bewegte Paare fahren
-// gemeinsam auf und ab (movingPipes) und/oder schwanken nach links und
-// rechts (sidePipes); die Lücke bleibt immer gleich groß.
+// gemeinsam auf und ab (movingPipes), schwanken nach links und rechts
+// (sidePipes) und/oder kippen um die Lückenmitte (tiltPipes); die Lücke
+// bleibt immer gleich groß.
 // Bewegungsarten: 'sine' (gleichmäßig) und 'step' (Uhrwerk: halten, dann zügig umsetzen).
+// Alle Rohre eines Versuchs stehen vorab im Layout (aus einem Seed). Dadurch
+// sieht ein Neustart am Checkpoint genauso aus wie der Lauf davor, inklusive
+// der Rohre hinter dem Vogel, und die Bot-Spule kann jede Stelle zeigen.
 // ============================================================
 const smoothStep = t => t * t * (3 - 2 * t);
 // -1..1: hält bei +1, wechselt weich nach -1, hält, wechselt zurück
@@ -288,54 +293,112 @@ function pipeGapAt(p, wt) {
 function pipeOffsetAt(p, wt) {
   return p.hamp ? p.hamp * Math.sin(p.hphase + TAU * wt / p.hperiod) : 0;
 }
+// Neigung (rad) zum Zeitpunkt wt; Drehpunkt ist die Mitte der Lücke
+function pipeAngleAt(p, wt) {
+  return p.tamp ? p.tamp * Math.sin(p.tphase + TAU * wt / p.tperiod) : 0;
+}
 const pipeCenter = p => p.gapY + p.gap / 2;
 const pipeX = p => p.slot + p.ox;                       // linke Kante in Weltkoordinaten, aktuell
 const pipeXa = (p, a) => p.slot + lerp(p.pox, p.ox, a);  // interpoliert zum Zeichnen
+// Lückenmitte an der Weltkoordinate wx (bei gekippten Paaren liegt die Lücke schräg)
+const pipeCenterAtX = (p, wx) => pipeCenter(p) + (p.ang ? (wx - (pipeX(p) + PW_ / 2)) * Math.tan(p.ang) : 0);
 
-function spawnPipe() {
-  const li = game.level, L = LEVELS[li], idx = game.pipesSpawned, gap = L.pipeGap, mp = L.movingPipes, sp = L.sidePipes || { share: 0 };
-  const slot = game.lastSlot === null ? game.scroll + W + CONFIG.PIPE_SPAWN_AHEAD : game.lastSlot + CONFIG.PIPE_SPACING;
-  // Das erste Rohr nach Start oder Checkpoint steht still, damit der Einstieg ruhig bleibt
-  const calm = idx <= game.pipesStart;
-  const moving = !calm && mp.share > 0 && RNG() < mp.share;
-  const side = !calm && sp.share > 0 && RNG() < sp.share;
-  const amp = moving ? mp.amplitude : 0, hamp = side ? sp.amplitude : 0;
-  const edge = moving ? CONFIG.MOVING_EDGE_MARGIN + amp : CONFIG.PIPE_EDGE_MARGIN;
-  const minTop = edge, maxTop = GROUND_Y - edge - gap;
-  let top = rand(minTop, maxTop);
-  if (game.lastCenter !== null) {
-    // Aufeinanderfolgende Lücken höchstens 170 auseinander, auch im ungünstigsten Moment der
-    // Bewegung (deshalb beide Ausschläge abziehen). Seitlich schwankende Paare kommen sich näher,
-    // dafür wird der erlaubte Höhenunterschied weiter verkleinert. Gleichverteilt im erlaubten Fenster.
-    const step = Math.max(50, CONFIG.PIPE_MAX_STEP - (amp + game.lastAmp) - 0.6 * (hamp + game.lastHamp));
-    const lo = Math.max(minTop, game.lastCenter - step - gap / 2), hi = Math.min(maxTop, game.lastCenter + step - gap / 2);
-    top = lo <= hi ? rand(lo, hi) : clamp(top, minTop, maxTop);
+// Layout eines Versuchs: Höhe, Bewegung und Variante jedes Rohrs, aus dem Seed
+const TILT_SHIFT = (PW_ / 2 + CONFIG.BIRD_W) * 0.17;   // so weit wandert die Lückenmitte am Vogel bei voller Neigung
+function makeLayout(li, seed) {
+  const L = LEVELS[li], n = pipesFor(li), gap = L.pipeGap, mp = L.movingPipes, sp = L.sidePipes, tp = L.tiltPipes || { share: 0 };
+  const r = mulberry32(seed >>> 0 || 1), list = [];
+  let lastC = null, lastAmp = 0, lastH = 0, lastT = 0;
+  for (let idx = 0; idx < n; idx++) {
+    // Das erste Rohr steht still, damit der Einstieg ruhig bleibt
+    const moving = idx > 0 && mp.share > 0 && r() < mp.share;
+    const side = idx > 0 && sp.share > 0 && r() < sp.share;
+    const tilt = idx > 0 && tp.share > 0 && r() < tp.share;
+    const amp = moving ? mp.amplitude : 0, hamp = side ? sp.amplitude : 0, tsh = tilt ? TILT_SHIFT * tp.angle / 0.17 : 0;
+    const edge = (moving ? CONFIG.MOVING_EDGE_MARGIN + amp : CONFIG.PIPE_EDGE_MARGIN) + (tilt ? CONFIG.TILT_MARGIN : 0);
+    const minTop = edge, maxTop = GROUND_Y - edge - gap;
+    let top = minTop + r() * (maxTop - minTop);
+    if (lastC !== null) {
+      // Aufeinanderfolgende Lücken höchstens 170 auseinander, auch im ungünstigsten Moment der Bewegung
+      // (deshalb alle Ausschläge abziehen). Seitlich schwankende Paare kommen sich näher, gekippte verschieben
+      // die Lücke am Vogel: dafür wird der erlaubte Höhenunterschied weiter verkleinert. Gleichverteilt im Fenster.
+      const step = Math.max(50, CONFIG.PIPE_MAX_STEP - (amp + lastAmp) - 0.6 * (hamp + lastH) - (tsh + lastT));
+      const lo = Math.max(minTop, lastC - step - gap / 2), hi = Math.min(maxTop, lastC + step - gap / 2);
+      top = lo <= hi ? lo + r() * (hi - lo) : clamp(top, minTop, maxTop);
+    }
+    top = Math.round(top);
+    list.push({ top, amp, period: moving ? mp.period : 1, phase: moving ? r() * TAU : 0, motion: moving ? (mp.motion || 'sine') : 'sine',
+      hamp, hperiod: side ? sp.period : 1, hphase: side ? r() * TAU : 0,
+      tamp: tilt ? tp.angle : 0, tperiod: tilt ? tp.period : 1, tphase: tilt ? r() * TAU : 0, v: Math.floor(r() * 2) });
+    lastC = top + gap / 2; lastAmp = amp; lastH = hamp; lastT = tsh;
   }
-  top = Math.round(top);
-  const p = { type: 'pipe', idx, slot, gap, gy0: top, amp, period: moving ? mp.period : 1, phase: moving ? RNG() * TAU : 0, motion: moving ? (mp.motion || 'sine') : 'sine',
-    hamp, hperiod: side ? sp.period : 1, hphase: side ? RNG() * TAU : 0, v: Math.floor(RNG() * 2), passed: false };
+  return { li, seed: seed >>> 0, list, base: 0, shiftFrom: Infinity };
+}
+// Neuer Seed aus dem Spielzufall (im Autotest fest, im Spiel echt zufällig)
+const newSeed = () => (Math.floor(RNG() * 2147483646) + 1) >>> 0;
+// Weltposition (linke Kante) des Rohrs idx, ohne seitliches Schwanken. Beim Fortsetzen am Checkpoint
+// bekommt das Rohr, vor dem es weitergeht, zusätzlichen Anlauf (CP_EXTRA), die Rohre dahinter stehen wie zuvor.
+const slotOf = idx => game.layout.base + idx * CONFIG.PIPE_SPACING + (idx >= game.layout.shiftFrom ? CONFIG.CP_EXTRA : 0);
+
+function ensureLayout() {
+  const lay = game.layout;
+  if (!lay || lay.li !== game.level || (game.pipesSpawned === 0 && game.pipesStart === 0 && !game.keepLayout)) {
+    game.layout = makeLayout(game.level, newSeed());
+    game.layout.base = game.scroll + W + CONFIG.PIPE_SPAWN_AHEAD;
+  } else if (game.pipesSpawned === 0 && game.keepLayout) game.layout.base = game.scroll + W + CONFIG.PIPE_SPAWN_AHEAD;
+  game.keepLayout = false;
+}
+
+function spawnPipe(behind) {
+  if (!behind) ensureLayout();
+  const li = game.level, L = LEVELS[li], idx = game.pipesSpawned, e = game.layout.list[idx];
+  // Das erste Rohr nach Start oder Checkpoint steht still und gerade
+  const calm = idx === game.pipesStart && idx > 0;
+  const p = { type: 'pipe', idx, slot: slotOf(idx), gap: L.pipeGap, gy0: e.top, amp: calm ? 0 : e.amp, period: e.period, phase: e.phase, motion: e.motion,
+    hamp: calm ? 0 : e.hamp, hperiod: e.hperiod, hphase: e.hphase, tamp: calm ? 0 : e.tamp, tperiod: e.tperiod, tphase: e.tphase, v: e.v, passed: !!behind };
   p.gapY = p.pgapY = pipeGapAt(p, game.wt);
   p.ox = p.pox = pipeOffsetAt(p, game.wt);
+  p.ang = p.pang = pipeAngleAt(p, game.wt);
   const prev = pipes.length ? pipes[pipes.length - 1] : null;
   pipes.push(p);
   game.pipesSpawned++;
-  game.lastSlot = slot;
-  game.lastCenter = top + gap / 2;
-  game.lastAmp = amp;
-  game.lastHamp = hamp;
-  if (prev) spawnHazardsBetween(prev, p);
-  maybeSpawnPickup(p);
+  game.lastSlot = p.slot;
+  game.lastCenter = e.top + p.gap / 2;
+  game.lastAmp = p.amp;
+  game.lastHamp = p.hamp;
+  if (prev && !behind) spawnHazardsBetween(prev, p);
+  if (!behind) maybeSpawnPickup(p);
   return p;
+}
+const spawnDue = () => game.pipesSpawned < pipesFor(game.level) && (!game.layout || game.layout.li !== game.level || game.pipesSpawned === 0 && game.pipesStart === 0 && !game.keepLayout
+  || slotOf(game.pipesSpawned) - game.scroll <= W + CONFIG.PIPE_SPAWN_AHEAD);
+
+// Fortsetzen ab Rohr j (Checkpoint oder Startpunkt der Bot-Spule): Das Layout bleibt, die schon passierten Rohre
+// stehen wie gewohnt hinter dem Vogel, vor Rohr j liegt zusätzlicher Anlauf. Der Vogel schwebt auf Höhe der
+// Lücke von Rohr j, bis getippt wird.
+function resumeWorldAt(j) {
+  const lay = game.layout;
+  lay.shiftFrom = j;
+  // Rechte Kante von Rohr j-1 liegt 40 px hinter dem Vogel
+  lay.base = birdWorldX() - 40 - PW_ - (j - 1) * CONFIG.PIPE_SPACING;
+  let first = j;
+  while (first > 0 && slotOf(first - 1) + PW_ > game.scroll - 30) first--;
+  game.pipesSpawned = first;
+  while (game.pipesSpawned < j) spawnPipe(true);
+  // Rohre voraus schon zeigen
+  while (game.pipesSpawned < pipesFor(game.level) && slotOf(game.pipesSpawned) - game.scroll <= W + CONFIG.PIPE_SPAWN_AHEAD) spawnPipe(false);
+  const e = lay.list[Math.min(j, lay.list.length - 1)];
+  return e.top + LEVELS[game.level].pipeGap / 2;
 }
 
 function updatePipes(dt) {
-  const total = pipesFor(game.level);
   if (game.state === 'PLAYING' || game.state === 'CHECKPOINT') {
-    while (game.pipesSpawned < total && (game.lastSlot === null || game.lastSlot - game.scroll <= W + CONFIG.PIPE_SPAWN_AHEAD - CONFIG.PIPE_SPACING)) spawnPipe();
+    while (spawnDue()) spawnPipe(false);
   }
   for (const p of pipes) {
     if (p.amp) p.gapY = pipeGapAt(p, game.wt);
     if (p.hamp) p.ox = pipeOffsetAt(p, game.wt);
+    if (p.tamp) p.ang = pipeAngleAt(p, game.wt);
   }
   const bwx = birdWorldX();
   for (const p of pipes) {
@@ -351,8 +414,27 @@ function updatePipes(dt) {
   if (pipes.length && pipeX(pipes[0]) + PW_ + 60 < game.scroll) pipes = pipes.filter(p => pipeX(p) + PW_ + 60 > game.scroll);
 }
 
+// Gedrehtes Rechteck (lokal x in [-hw, hw], y in [y0, y1] um den Drehpunkt cx, cy) gegen eine achsparallele Box (SAT)
+function obbHitsBox(cx, cy, ang, hw, y0, y1, box) {
+  const c = Math.cos(ang), s = Math.sin(ang);
+  const pts = [[-hw, y0], [hw, y0], [hw, y1], [-hw, y1]].map(([lx, ly]) => [cx + lx * c - ly * s, cy + lx * s + ly * c]);
+  const bp = [[box.x, box.y], [box.x + box.w, box.y], [box.x + box.w, box.y + box.h], [box.x, box.y + box.h]];
+  for (const [ax, ay] of [[1, 0], [0, 1], [c, s], [-s, c]]) {
+    let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
+    for (const [x, y] of pts) { const d = x * ax + y * ay; a0 = Math.min(a0, d); a1 = Math.max(a1, d); }
+    for (const [x, y] of bp) { const d = x * ax + y * ay; b0 = Math.min(b0, d); b1 = Math.max(b1, d); }
+    if (a1 <= b0 || b1 <= a0) return false;
+  }
+  return true;
+}
+
 function pipeHits(p, box) {
   const x = pipeX(p) - game.scroll, bot = p.gapY + p.gap;
+  if (p.ang) {
+    if (box.x > x + PW_ + 40 || box.x + box.w < x - 40) return false;
+    const cx = x + PW_ / 2, cy = p.gapY + p.gap / 2, hg = p.gap / 2;
+    return obbHitsBox(cx, cy, p.ang, PW_ / 2, -900, -hg, box) || obbHitsBox(cx, cy, p.ang, PW_ / 2, hg, 900, box);
+  }
   return overlap(box, { x, y: -400, w: PW_, h: p.gapY + 400 }) || overlap(box, { x, y: bot, w: PW_, h: GROUND_Y - bot + 60 });
 }
 
@@ -383,31 +465,57 @@ function drawPipes(cache, a) {
   for (const p of pipes) {
     const gy = lerp(p.pgapY, p.gapY, a), x = wxToDev(pipeXa(p, a)) + sxo;
     if (x > canvas.width || x + w < -20) continue;
-    ctx.fillRect(x, -40, w, Math.round(gy * k) + syo + 40);
-    ctx.fillRect(x, Math.round((gy + p.gap) * k) + syo, w, Math.round((GROUND_Y - gy - p.gap) * k));
+    const ang = p.tamp ? lerp(p.pang, p.ang, a) : 0;
+    if (ang) { ctx.save(); tiltDev(x + w / 2, Math.round((gy + p.gap / 2) * k) + syo, ang); }
+    ctx.fillRect(x, -Math.round(80 * k), w, Math.round((gy + 80) * k) + syo);
+    ctx.fillRect(x, Math.round((gy + p.gap) * k) + syo, w, Math.round((GROUND_Y + 60 - gy - p.gap) * k));
+    if (ang) ctx.restore();
   }
   for (const p of pipes) {
     const dx = wxToDev(pipeXa(p, a));
     if (dx > canvas.width + 40 * k || dx < -120 * k) continue;
-    drawPipeDev(cache.pipe, p, dx, lerp(p.pgapY, p.gapY, a));
+    const gy = lerp(p.pgapY, p.gapY, a), ang = p.tamp ? lerp(p.pang, p.ang, a) : 0;
+    if (ang) {
+      ctx.save();
+      tiltDev(dx + Math.round(PW_ / 2 * k), Math.round((gy + p.gap / 2) * k), ang);
+      drawPipeDev(cache.pipe, p, dx, gy, true);
+      ctx.restore();
+    } else drawPipeDev(cache.pipe, p, dx, gy, false);
   }
   ctx.imageSmoothingEnabled = true;
   ctx.restore();
 }
+// Drehung um einen Punkt in Gerätepixeln
+function tiltDev(px, py, ang) {
+  ctx.translate(px, py);
+  ctx.rotate(ang);
+  ctx.translate(-px, -py);
+}
 
-function drawPipeDev(ps, p, dx, gy) {
+function drawPipeDev(ps, p, dx, gy, tilted) {
   const k = view.k, body = ps.bodies[p.v], f = k / body.ks, PCH_ = CONFIG.PIPE_CAP_H;
-  ctx.imageSmoothingEnabled = f !== 1;
+  ctx.imageSmoothingEnabled = tilted || f !== 1;
   const bx = dx + Math.round(body.x0 * k), bw = Math.round(body.c.width * f);
-  const topEnd = Math.round((gy - PCH_) * k), topStart = -Math.round(20 * k);
+  // Gekippt reichen die Körper weiter über Bildrand und Boden hinaus, damit keine Enden sichtbar werden
+  const topEnd = Math.round((gy - PCH_) * k), topStart = -Math.round((tilted ? 90 : 20) * k);
   if (topEnd > topStart) {
-    const sh = Math.min(body.c.height, Math.ceil((topEnd - topStart) / f));
-    ctx.drawImage(body.c, 0, body.c.height - sh, body.c.width, sh, bx, topEnd - Math.round(sh * f), bw, Math.round(sh * f));
+    let y = topEnd;
+    while (y > topStart) {
+      const sh = Math.min(body.c.height, Math.ceil((y - topStart) / f));
+      ctx.drawImage(body.c, 0, body.c.height - sh, body.c.width, sh, bx, y - Math.round(sh * f), bw, Math.round(sh * f));
+      y -= Math.round(sh * f);
+      if (!tilted) break;
+    }
   }
-  const botStart = Math.round((gy + p.gap + PCH_) * k), botEnd = Math.round((GROUND_Y + 10) * k);
+  const botStart = Math.round((gy + p.gap + PCH_) * k), botEnd = Math.round((GROUND_Y + (tilted ? 70 : 10)) * k);
   if (botEnd > botStart) {
-    const sh = Math.min(body.c.height, Math.ceil((botEnd - botStart) / f));
-    ctx.drawImage(body.c, 0, 0, body.c.width, sh, bx, botStart, bw, Math.round(sh * f));
+    let y = botStart;
+    while (y < botEnd) {
+      const sh = Math.min(body.c.height, Math.ceil((botEnd - y) / f));
+      ctx.drawImage(body.c, 0, 0, body.c.width, sh, bx, y, bw, Math.round(sh * f));
+      y += Math.round(sh * f);
+      if (!tilted) break;
+    }
   }
   drawSpriteDev(ps.capTop, dx, Math.round((gy - PCH_) * k));
   drawSpriteDev(ps.capBot, dx, Math.round((gy + p.gap) * k));

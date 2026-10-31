@@ -154,10 +154,22 @@ function availableSize() {
   const r = stage && stage.getBoundingClientRect ? stage.getBoundingClientRect() : null;
   return r && r.width > 0 && r.height > 0 ? [r.width, r.height] : [window.innerWidth || 400, window.innerHeight || 600];
 }
+// Bildformat (Einstellung): 'auto' folgt dem Fenster, 'hoch' spielt in einer schmalen Spalte, 'quer' immer breit.
+// Liegt hier statt in den Einstellungen, weil resize() schon vor deren Laden läuft.
+const VIEWFMT = { format: 'auto', aw: 400, ah: 600 };
+function targetW(aw, ah) {
+  const w = Math.round(H * aw / ah);
+  if (VIEWFMT.format === 'hoch') return clamp(w, CONFIG.W_PORTRAIT[0], CONFIG.W_PORTRAIT[1]);
+  if (VIEWFMT.format === 'quer') return clamp(w, CONFIG.W_LANDSCAPE[0], CONFIG.W_LANDSCAPE[1]);
+  return clamp(w, CONFIG.W_MIN, CONFIG.W_MAX);
+}
+// Querformat gewählt, aber das Gerät steht hochkant (oder umgekehrt): Hinweis zum Drehen
+const formatMismatch = () => (VIEWFMT.format === 'quer' && VIEWFMT.ah > VIEWFMT.aw * 1.15);
 function resize() {
   const [aw, ah] = availableSize();
   const oldW = W;
-  W = clamp(Math.round(H * aw / ah), CONFIG.W_MIN, CONFIG.W_MAX);
+  VIEWFMT.aw = aw; VIEWFMT.ah = ah;
+  W = targetW(aw, ah);
   const scale = Math.min(aw / W, ah / H) || 1;
   const dpr = window.devicePixelRatio || 1;
   canvas.style.width = `${W * scale}px`;

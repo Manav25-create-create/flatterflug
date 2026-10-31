@@ -1,10 +1,11 @@
 // ============================================================
-// Boss: gemeinsame Mechanik für alle 15, nur das Muster ist verschieden.
+// Boss: gemeinsame Mechanik für alle, nur das Muster ist verschieden.
 // Ablauf: BOSS_INTRO (Einflug) -> BOSS_GRACE (Schonfrist) -> BOSS_FIGHT.
 // Ein Angriff nach dem anderen. Jedes ausgewichene Geschoss prallt am
 // Rand ab und fliegt blass zum Boss zurück; der erste Rückpraller eines
-// ausgewichenen Angriffs trifft ihn. Level n braucht n Treffer, im
-// letzten Level kommen alle 15 Bosse nacheinander mit je 2 Treffern.
+// ausgewichenen Angriffs trifft ihn. Treffer pro Level stehen in BOSS_LIVES
+// (Level 1: 1, jedes Level ohne neues Hindernis +1). Im letzten Level kommen
+// die 19 Bosse der Level davor nacheinander mit je 2 Treffern.
 // Abstand und Tempo hängen von der Bildbreite ab, damit die Zeit bis zum
 // Vogel überall gleich bleibt (sonst wären breite Bildschirme viel leichter).
 // ============================================================
@@ -30,8 +31,9 @@ const rainSpeed = () => Math.max(2.2, (bossDist() - 16) / (bossTTC() * 1.3));
 // Pause zwischen zwei Angriffen (enthält die Vorwarnung): von 90 Frames in Level 1 auf 64 in Level 14
 const attackCooldown = () => Math.max(64, CONFIG.ATTACK_COOLDOWN - 2 * game.level);
 const isRushLevel = li => li === LEVELS.length - 1;
-// Trefferzahl: Level n braucht n, im Boss-Ansturm jeder Boss 2
-const bossNeedFor = li => (isRushLevel(li) ? CONFIG.RUSH_HITS : li + 1);
+const RUSH_COUNT = LEVELS.length - 1;          // Bosse im Ansturm: die der Level 1 bis 19
+// Trefferzahl: laut BOSS_LIVES, im Boss-Ansturm jeder Boss 2
+const bossNeedFor = li => (isRushLevel(li) ? CONFIG.RUSH_HITS : BOSS_LIVES[li]);
 
 function makeBoss(li) {
   const b = { li, x: W + 40, enterX: W + 40, y: Math.round(rand(CONFIG.BOSS_Y_MIN + 60, CONFIG.BOSS_Y_MAX - 60)), dir: RNG() < 0.5 ? -1 : 1, timer: 0, plan: null,
@@ -544,6 +546,8 @@ function drawOrb(s, C, st, x, y) {
       break;
     }
     default:
+      // Eigene Geschossformen neuer Biome: ART2.projectile[stil](s, C, x, y), Radius s.r, Flugrichtung aus s.vx/s.vy
+      if (ART2.projectile[st]) { ART2.projectile[st](s, C, x, y); break; }
       circle(x, y, r, shade(C.accent, -CONFIG.SIDE_DARKEN));
       circle(x - 1, y - 1, r * 0.8, C.accent);
       circle(x - 1.5, y - 1.5, r * 0.42, CREAM);

@@ -228,7 +228,8 @@ const MusicGen = (() => {
   // Stufen der Biom-Tonleiter; Spielweise, Lage und Pegel der Stimmen; Schlagzeug; Sende-Anteile
   // für Echo und Hall; trim gleicht die Lautheit an (in dB). Tonleiter, Tempo und Wellenformen
   // kommen unverändert aus LEVELS[i].music. tune enthält die erlaubte Feinabstimmung.
-  const BIOME_NAMES = ['Wiese', 'Eis', 'Lava', 'Dschungel', 'Wüste', 'Ozean', 'Sturm', 'Höhle', 'Sumpf', 'Neon', 'Kristall', 'Wolken', 'Uhrwerk', 'Asche', 'Weltraum'];
+  const BIOME_NAMES = ['Wiese', 'Eis', 'Lava', 'Dschungel', 'Wüste', 'Ozean', 'Sturm', 'Höhle', 'Sumpf', 'Neon', 'Kristall', 'Wolken', 'Uhrwerk', 'Asche', 'Weltraum',
+    'Blütenhain', 'Lagune', 'Herbstwald', 'Ruinen', 'Schattenreich'];
   const BIOME = [
     { // 0 Wiese: Dur-Pentatonik, hell und federnd
       harm: [0, 4, 1, 3, 0, 4, 3, 0, 4, 2, 1, 3, 0, 4, 1, 3], riff: [4, 3, 0, 1],
@@ -334,6 +335,41 @@ const MusicGen = (() => {
       pad: { att: 1.6, rel: 2.2, ext: 2, center: 62, gain: 0.85, lfo: 0.05 },
       bass: { pat: 'r...........5...', lo: 40 },
       kit: 'space', send: { dly: 0.4, dlyPerc: 0.4, rev: 1.1 }
+    },
+    { // 15 Blütenhain: Dur-Pentatonik, Spieluhr aus hellen Glocken, sanft gezupfte Fläche
+      harm: [0, 3, 4, 0, 0, 3, 1, 4, 0, 3, 4, 2, 0, 3, 1, 4], riff: [0, 3, 4, 1],
+      lead: { inst: 'bell', center: 81, decay: 0.4, maxLen: 12, partials: [[1, 1, 1], [3, 0.16, 0.35], [5.1, 0.05, 0.15]] },
+      pad: { mode: 'strum', pat: 'x.......x.......', att: 0.01, sus: 0.45, dec: 0.4, rel: 0.2, lp: 2800, center: 64, gain: 0.85, art: 0.95 },
+      bass: { pat: 'r.......5.......', lo: 40 },
+      kit: 'light', percGain: 0.7, send: { dly: 0.22, rev: 0.95 }
+    },
+    { // 16 Lagune: mixolydisch, Marimba mit leichtem Swing
+      harm: [0, 6, 3, 0, 0, 6, 4, 4, 0, 6, 3, 3, 5, 6, 4, 4], riff: [0, 6, 3, 4],
+      lead: { inst: 'mallet', center: 74, decay: 0.2, art: 1 },
+      pad: { mode: 'broken', pat: 'x..x..x...x..x..', idx: [0, 1, 2, 1], art: 0.9, att: 0.004, sus: 0.25, dec: 0.15, rel: 0.1, center: 62, gain: 0.9, lp: 2600 },
+      bass: { pat: 'r..r..5.r..r..5.', lo: 38, art: 0.7 },
+      kit: 'light', send: { dly: 0.18, rev: 0.85 }
+    },
+    { // 17 Herbstwald: dorisch, gezupft wie eine Laute, warme Fläche
+      harm: [0, 0, 6, 6, 3, 3, 4, 4, 0, 0, 6, 6, 3, 4, 0, 0], riff: [0, 6, 3, 4],
+      lead: { inst: 'pluck', center: 72, decay: 0.35, grace: 0.15 },
+      pad: { att: 0.9, rel: 1.4, center: 60, gain: 0.85, lp: 1900 },
+      bass: { pat: 'r.......r...5...', lo: 36 },
+      kit: 'brush', send: { dly: 0.2, rev: 0.9 }
+    },
+    { // 18 Ruinen: phrygisch, Laute und Rahmentrommel, enger Filter
+      harm: [0, 0, 1, 1, 0, 0, 6, 1, 3, 3, 1, 1, 0, 6, 1, 1], riff: [0, 1, 0, 6],
+      lead: { inst: 'oud', center: 67, decay: 0.32, grace: 0.25 },
+      pad: { att: 1.2, rel: 1.6, power: true, lp: 850, center: 50, gain: 0.7 },
+      bass: { pat: 'r.....r...r.....', lo: 33 },
+      kit: 'frame', hp: 180, send: { dly: 0.24, rev: 1.05 }
+    },
+    { // 19 Schattenreich: harmonisch Moll, tief und schwer, langsamer Puls
+      harm: [0, 0, 5, 5, 6, 6, 4, 4, 0, 0, 5, 5, 3, 3, 4, 4], riff: [0, 5, 6, 4],
+      lead: { inst: 'dark', center: 62, pool: 'slow', att: 0.08, sus: 0.85, rel: 0.45, art: 1, vib: 9, maxLen: 12 },
+      pad: { att: 1.4, rel: 2, lp: 650, center: 50, gain: 0.9, power: true, lfo: 0.04 },
+      bass: { pat: 'r.......r.r.....', lo: 31, lp: 520 },
+      kit: 'heavy', send: { dly: 0.2, rev: 1.1, revPerc: 0.9 }
     }
   ];
   // Menü und Endbildschirm
@@ -391,7 +427,13 @@ const MusicGen = (() => {
     level13: [0.8, 2, 7.2, -1.2, 1.8],
     boss13: [0.5, -0.1, 4.5, -1.1, 1.6],
     level14: [-7.7, -3.5, -4.8, -2, 1.3],
-    boss14: [-8.6, -4.6, -4.2, -1.7, 1.3]
+    boss14: [-8.6, -4.6, -4.2, -1.7, 1.3],
+    // Neue Biome: Werte vom klanglich ähnlichsten Stück übernommen (nicht neu gemessen)
+    level15: [-0.7, -0.5, 0.6, -0.1, 2.1], boss15: [-1.9, -3.3, 0.2, -0.8, 1.6],
+    level16: [1.4, -1.4, 0.3, 4.3, 2.4], boss16: [-0.5, -3.3, -1.4, -1.2, 2],
+    level17: [-0.7, -0.5, 0.6, -0.1, 2.1], boss17: [-1.9, -3.3, 0.2, -0.8, 1.6],
+    level18: [5.5, 2.1, -0.2, 1.9, 2.5], boss18: [4, 0.4, -1.4, 1.2, 1.9],
+    level19: [0.8, 2, 7.2, -1.2, 1.8], boss19: [0.5, -0.1, 4.5, -1.1, 1.6]
   };
   // CAL-END
 
