@@ -94,7 +94,8 @@ const CONFIG = {
   SHAKE_HIT: [6, 20],             // Amplitude, Abklingzeit in Frames
   SHAKE_CEILING: [2, 4],
   CACHE_MAX_SCALE: 4,
-  STORAGE_KEY: 'flatterflug-20-biome-v5',         // Stand v5: 20 Level, Arrays mit Levelnamen
+  STORAGE_KEY: 'flatterflug-spielstand',          // Dauerhafter Schlüssel (ab v5): wird nie wieder umbenannt
+  STORAGE_KEY_BACKUP: 'flatterflug-spielstand-sicherung',   // vorheriger Stand, falls der Hauptstand beschädigt ist
   STORAGE_KEY_V4: 'flatterflug-15-biome-v4',      // nur noch lesen (Übernahme per Levelname)
   STORAGE_KEY_V3: 'flatterflug-15-biome-v3',      // nur noch lesen (Übernahme, alte Levelreihenfolge)
   STORAGE_KEY_OLD: 'flatterflug-zehn-biome-v2',   // nur noch lesen (Übernahme)

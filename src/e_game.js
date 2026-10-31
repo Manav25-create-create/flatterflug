@@ -47,6 +47,17 @@ function storageSet(key, val) {
 }
 
 // ---------- Stand v5 ----------
+// Dauerhaft: Der Schlüssel CONFIG.STORAGE_KEY ("flatterflug-spielstand") bleibt in allen künftigen Fassungen gleich.
+// Schutzregeln, damit ein Spielstand jedes Update übersteht:
+//  1. Level werden nur über ihren Namen zugeordnet, nie über die Position (names im Datensatz). Wird ein Biom
+//     umbenannt, kommt der alte Name in LEVEL_ALIASES.
+//  2. Fortschritt wird beim Schreiben nie kleiner: Der gespeicherte Stand wird vorher eingemischt (offen, geschafft,
+//     Bot-Spule, Skins). Nur "Fortschritt löschen" darf ihn verkleinern.
+//  3. Level und Felder, die diese Fassung nicht kennt (z. B. aus einer neueren Fassung im Browser-Cache), bleiben
+//     im Datensatz erhalten.
+//  4. Vor jedem Überschreiben wandert der bisherige Stand in CONFIG.STORAGE_KEY_BACKUP; ist der Hauptstand
+//     beschädigt, wird die Sicherung gelesen.
+//  5. Alte Schlüssel (v2 bis v4) werden nur gelesen und einmal übernommen, nie gelöscht.
 // Ein Stand, lokal und in der Cloud gleich aufgebaut:
 // { v: 5, names: [Levelnamen], progress: { open, beaten, bot, completed, best: { frames, deaths } | null, customSkins,
 //   resume: { li, pipes, frames, seed } | null, savedAt }, settings: { skin, ambient, volume, difficulty, format } }
@@ -58,7 +69,9 @@ const V4_LEVEL_ORDER = ['Wiese', 'Wolken', 'Ozean', 'Dschungel', 'Wüste', 'Sump
 const V3_LEVEL_ORDER = ['Wiese', 'Eis', 'Lava', 'Dschungel', 'Wüste', 'Ozean', 'Sturm', 'Höhle', 'Sumpf', 'Neon', 'Kristall', 'Wolken', 'Uhrwerk', 'Asche', 'Weltraum'];
 const V2_LEVEL_ORDER = ['Wiese', 'Eis', 'Lava', 'Dschungel', 'Wüste', 'Ozean', 'Sturm', 'Höhle', 'Neon', 'Weltraum'];
 const MAX_CUSTOM_SKINS = 8;
-const levelIndexOf = name => LEVELS.findIndex(L => L.name === name);
+// Umbenannte Biome: alter Name -> neuer Name (bisher keine)
+const LEVEL_ALIASES = {};
+const levelIndexOf = name => { const n = Object.prototype.hasOwnProperty.call(LEVEL_ALIASES, name) ? LEVEL_ALIASES[name] : name; return LEVELS.findIndex(L => L.name === n); };
 const isRec = v => !!v && typeof v === 'object' && !Array.isArray(v);
 // Ganzzahl ab 0, nach oben begrenzt; alles andere ergibt -1
 const natIn = (v, max) => (typeof v === 'number' && v >= 0 && v < Infinity ? Math.min(Math.floor(v), max) : -1);
@@ -130,13 +143,14 @@ function cleanSettings(d) {
   return s;
 }
 // Kanonische Form (feste Schlüsselreihenfolge, gleiche Stände ergeben gleiches JSON). Klein und begrenzt: 3 x 20 Werte, höchstens 8 Skins.
-const saveRecord = st => ({ v: 5, names: LEVELS.map(L => L.name), progress: st.progress, settings: st.settings });
-// Levelnamen eines gelesenen Stands: v5 trägt sie selbst, v4 nutzt die feste alte Reihenfolge
+const saveRecord = st => ({ v: 5, legacy: true, names: LEVELS.map(L => L.name), progress: st.progress, settings: st.settings });
+// Levelnamen eines gelesenen Stands: ab v5 trägt er sie selbst, v4 nutzt die feste alte Reihenfolge
 function savedNames(d) {
   if (Number(d.v) === 4) return V4_LEVEL_ORDER;
   const n = d.names;
   return Array.isArray(n) && n.length <= 64 && n.every(x => typeof x === 'string') ? n : null;
 }
+const isSaveV5 = d => isRec(d) && Number(d.v) >= 5 && isRec(d.progress) && !!savedNames(d);
 // Stand eines Datensatzes (v4 oder v5) bereinigt lesen; v4 hatte 15 Level und ein anderes Ende: Bestzeit und
 // "durchgespielt" gelten nicht weiter, alles andere (offen, geschafft, Skins, Einstellungen) wird übernommen
 function recordToSave(d) {
@@ -207,28 +221,80 @@ function progressFromV2(d) {
 
 // ---------- Lokal (localStorage) ----------
 const localSave = { content: '' };      // Inhalt (ohne savedAt) des zuletzt gesicherten Stands
+// Roh gelesener Datensatz: Hauptstand, sonst die Sicherung
+function readStoredRecord() {
+  for (const key of [CONFIG.STORAGE_KEY, CONFIG.STORAGE_KEY_BACKUP]) {
+    const d = parseSave(storageGet(key));
+    if (isSaveV5(d)) return d;
+  }
+  return null;
+}
 function readLocalSave() {
-  const d = parseSave(storageGet(CONFIG.STORAGE_KEY));
-  return isRec(d) && Number(d.v) === 5 ? recordToSave(d) : null;
+  const d = readStoredRecord();
+  return d ? recordToSave(d) : null;
 }
 // Stand v4 (15 Level) aus dem alten Schlüssel; der alte Schlüssel bleibt unangetastet
 function readV4Save() {
   const d = parseSave(storageGet(CONFIG.STORAGE_KEY_V4));
   return isRec(d) && Number(d.v) === 4 ? recordToSave(d) : null;
 }
-function writeLocalSave(st) { storageSet(CONFIG.STORAGE_KEY, saveJSON(st)); }
+// Fortschritt der Vorgänger (v4, sonst v3, sonst v2), falls vorhanden
+function readLegacyProgress() {
+  const v4 = readV4Save();
+  if (v4) return v4.progress;
+  let d = parseSave(storageGet(CONFIG.STORAGE_KEY_V3));
+  if (isRec(d)) return progressFromV3(d);
+  d = parseSave(storageGet(CONFIG.STORAGE_KEY_OLD));
+  return isRec(d) ? progressFromV2(d) : null;
+}
 
-// Lokalen Fortschritt laden: v4, sonst Übernahme aus v3, sonst aus v2. Synchron, wirft nie.
+// Schreiben mit Schutz (siehe Regeln oben). Gibt den tatsächlich geschriebenen Stand zurück; er kann mehr
+// Fortschritt enthalten als st, wenn im Speicher schon mehr stand (z. B. aus einem zweiten Tab).
+const saveGuard = { shrink: false };
+const KNOWN_TOP = ['v', 'legacy', 'names', 'progress', 'settings'];
+const KNOWN_PROGRESS = ['open', 'beaten', 'bot', 'completed', 'best', 'customSkins', 'resume', 'savedAt'];
+function writeLocalSave(st) {
+  const prevRaw = storageGet(CONFIG.STORAGE_KEY), prev = parseSave(prevRaw), hasPrev = isSaveV5(prev);
+  let out = st;
+  if (hasPrev && !saveGuard.shrink) {
+    const old = recordToSave(prev);
+    if (old) out = mergeSaves(st, old);
+  }
+  const rec = saveRecord(out);
+  if (hasPrev) {
+    // Unbekannte Level (Name nicht in LEVELS) mit ihren Werten behalten
+    const names = savedNames(prev), P = prev.progress;
+    names.forEach((n, i) => {
+      if (levelIndexOf(n) >= 0 || rec.names.includes(n)) return;
+      rec.names.push(n);
+      for (const k of ['open', 'beaten', 'bot']) rec.progress[k].push(Array.isArray(P[k]) && P[k][i] === true);
+    });
+    // Unbekannte Felder einer neueren Fassung durchreichen
+    for (const k of Object.keys(prev)) if (!KNOWN_TOP.includes(k)) rec[k] = prev[k];
+    for (const k of Object.keys(P)) if (!KNOWN_PROGRESS.includes(k)) rec.progress[k] = P[k];
+    if (isRec(prev.settings)) for (const k of Object.keys(prev.settings)) if (!(k in rec.settings)) rec.settings[k] = prev.settings[k];
+  }
+  const raw = JSON.stringify(rec);
+  if (raw === prevRaw) return out;
+  if (hasPrev) storageSet(CONFIG.STORAGE_KEY_BACKUP, prevRaw);
+  storageSet(CONFIG.STORAGE_KEY, raw);
+  return out;
+}
+
+// Lokalen Fortschritt laden: eigener Stand (Haupt oder Sicherung). Fortschritt der Vorgänger wird einmal
+// hinzugenommen (Vereinigung), danach markiert der Datensatz das mit legacy. Synchron, wirft nie.
 function loadProgress() {
   try {
-    const own = readLocalSave() || readV4Save();
+    const rec = readStoredRecord(), own = rec ? recordToSave(rec) : null;
     let p = own && own.progress;
-    if (!p) { const d = parseSave(storageGet(CONFIG.STORAGE_KEY_V3)); if (isRec(d)) p = progressFromV3(d); }
-    if (!p) { const d = parseSave(storageGet(CONFIG.STORAGE_KEY_OLD)); if (isRec(d)) p = progressFromV2(d); }
+    if (!rec || rec.legacy !== true) {
+      const old = readLegacyProgress();
+      if (old) p = p ? mergeSaves({ progress: p, settings: own.settings }, { progress: old, settings: own.settings }).progress : old;
+    }
     if (p) applyProgress(p);
   } catch (e) { /* ohne Speicher weiter */ }
 }
-// Einstellungen laden: aus dem Stand v4, sonst aus dem alten Einstellungsschlüssel (Schwierigkeit dann "mittel")
+// Einstellungen laden: aus dem eigenen Stand, sonst aus v4, sonst aus dem alten Einstellungsschlüssel
 function loadSettings() {
   try {
     const own = readLocalSave() || readV4Save(), old = own ? null : parseSave(storageGet(CONFIG.SETTINGS_KEY));
@@ -245,8 +311,11 @@ function commitSave() {
     const st = currentSave(), content = saveContent(st);
     if (content === localSave.content) return;
     progress.savedAt = st.progress.savedAt = Math.max(Date.now(), st.progress.savedAt + 1);
-    localSave.content = content;
-    writeLocalSave(st);
+    const out = writeLocalSave(st);
+    saveGuard.shrink = false;
+    // Stand im Speicher hatte mehr Fortschritt (zweiter Tab o. ä.): hier übernehmen
+    if (out !== st) applyProgress(out.progress);
+    localSave.content = saveContent(out);
     queueCloudSave();
   } catch (e) { /* Speichern hält das Spiel nie an */ }
 }
@@ -266,7 +335,9 @@ function resetProgress() {
   progress.resume = null;
   settings.skin = 0;
   if (!SIM.on && !cloudSave.ready) cloudSave.resetPending = true;
+  saveGuard.shrink = true;              // nur hier darf der gespeicherte Fortschritt kleiner werden
   saveProgress();
+  saveGuard.shrink = false;
   saveSettings();
   game.resetArm = 0;
   setMenuBg(0);
