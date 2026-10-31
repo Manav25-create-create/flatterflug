@@ -872,7 +872,8 @@ function gearPath(x, y, r, ang, teeth) {
 }
 function drawGearShot(s, C, x, y) {
   // Zähne ragen etwas über den Trefferradius hinaus, der Körper entspricht ihm
-  const r = s.r + 1.5, teeth = 8, brass = C.pipe;
+  // Kupferfarben aus dem Akzent statt Messing: hebt sich vor den Messingsäulen und -kulissen ab
+  const r = s.r + 1.5, teeth = 8, brass = mix(C.accent, CREAM, 0.12);
   if (!s.ghost) ctx.drawImage(glowSprite(C.accent), x - r * 2, y - r * 2, r * 4, r * 4);
   gearPath(x + SHADOW.x * 0.5, y + SHADOW.y * 0.5, r, s.ang, teeth);
   ctx.fillStyle = rgba(INK, CONFIG.SHADOW_ALPHA);
@@ -880,8 +881,8 @@ function drawGearShot(s, C, x, y) {
   const rin = gearPath(x, y, r, s.ang, teeth);
   ctx.fillStyle = rgrad(x, y, 2, r, [[0, mix(brass, CREAM, 0.35)], [0.6, brass], [1, shade(brass, -0.32)]], x - r * 0.35, y - r * 0.4);
   ctx.fill();
-  ctx.strokeStyle = rgba(INK, 0.35);
-  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = rgba(INK, 0.75);
+  ctx.lineWidth = 1.6;
   ctx.stroke();
   circle(x, y, rin * 0.72, rgba(INK, 0.28));
   ctx.save();
