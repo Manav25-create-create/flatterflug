@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Flatterflug 15 Biome</title>
+<style>
+  /* Ein dunkles Spielfenster, mittig, mit 16 px Seitenrand; Farben als Token */
+  :root {
+    --bg: #16131f; --ink: #1e1a2c; --cream: #f6efe0; --accent: #eebd4a;
+    --panel-top: #2b2638; --panel-bottom: #211d2c; --line: rgba(246, 239, 224, 0.35); --error: #ffb39a;
+    --s: 1;
+    color-scheme: dark;
+  }
+  html { height: 100%; box-sizing: border-box; background: var(--bg); }
+  body {
+    margin: 0; height: 100%; box-sizing: border-box; overflow: hidden;
+    touch-action: none; overscroll-behavior: none;
+    padding-inline: 16px; padding-block: 0;
+    background: var(--bg); color: var(--cream);
+    font-family: "Trebuchet MS", system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif;
+  }
+  #stage { height: 100%; display: flex; align-items: center; justify-content: center; }
+  #game {
+    display: block;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    outline: none;
+  }
+  .dlg {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    padding-inline: 16px; background: rgba(18, 15, 28, 0.45); z-index: 10; touch-action: auto;
+  }
+  .dlg[hidden] { display: none; }
+  .dlg form {
+    width: calc(300px * var(--s)); max-width: 100%; max-height: 100%; overflow: auto; box-sizing: border-box;
+    padding: calc(18px * var(--s)) calc(20px * var(--s));
+    background: linear-gradient(var(--panel-top), var(--panel-bottom)); color: var(--cream);
+    border: 1.5px solid var(--accent); border-radius: calc(16px * var(--s));
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  }
+  .dlg h2 { margin: 0 0 calc(6px * var(--s)); font-size: max(18px, calc(22px * var(--s))); text-wrap: balance; }
+  .dlg p { margin: 0 0 calc(12px * var(--s)); font-size: max(13px, calc(13px * var(--s))); opacity: 0.8; line-height: 1.35; }
+  .dlg input[type=text] {
+    width: 100%; box-sizing: border-box; font: inherit; font-size: max(16px, calc(18px * var(--s)));
+    padding: calc(9px * var(--s)) calc(12px * var(--s)); border-radius: calc(10px * var(--s));
+    border: 1.5px solid var(--line); background: rgba(246, 239, 224, 0.08); color: var(--cream); outline: none;
+  }
+  #codeInput { letter-spacing: 0.3em; text-transform: uppercase; text-align: center; font-weight: bold; }
+  .dlg input[type=text]:focus, .dlg select:focus { border-color: var(--accent); }
+  .dlg .msg { min-height: 1.3em; margin: calc(8px * var(--s)) 0; font-size: max(13px, calc(13px * var(--s))); color: var(--error); }
+  .dlg .row { display: flex; flex-wrap: wrap; gap: calc(10px * var(--s)); justify-content: flex-end; }
+  .dlg button {
+    font: inherit; font-weight: bold; font-size: max(14px, calc(15px * var(--s)));
+    padding: calc(9px * var(--s)) calc(14px * var(--s)); border-radius: calc(10px * var(--s));
+    border: 1.2px solid var(--line); background: rgba(246, 239, 224, 0.1); color: var(--cream); cursor: pointer;
+  }
+  .dlg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .dlg button[type=submit] { background: var(--accent); color: var(--ink); }
+  #skinForm { width: calc(360px * var(--s)); }
+  .ed { display: grid; grid-template-columns: 1fr 1fr; gap: calc(8px * var(--s)) calc(12px * var(--s)); align-items: end; }
+  .ed canvas { grid-column: 1 / -1; width: 100%; height: calc(110px * var(--s)); min-height: 90px; border-radius: calc(12px * var(--s));
+    background: radial-gradient(circle at 50% 40%, rgba(246, 239, 224, 0.16), rgba(246, 239, 224, 0.03)); }
+  .ed label { display: flex; flex-direction: column; gap: 4px; font-size: max(12px, calc(13px * var(--s))); opacity: 0.9; }
+  .ed label.wide { grid-column: 1 / -1; }
+  .ed select, .ed input[type=color] {
+    font: inherit; font-size: max(14px, calc(15px * var(--s))); width: 100%; box-sizing: border-box; min-height: 36px;
+    border-radius: calc(8px * var(--s)); border: 1.5px solid var(--line); background: rgba(246, 239, 224, 0.08); color: var(--cream);
+  }
+  .ed select option { background: var(--panel-bottom); color: var(--cream); }
+  .ed input[type=color] { padding: 2px; }
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="game" width="400" height="600" tabindex="0" aria-label="Flatterflug Spielfläche"></canvas></div>
+<div class="dlg" id="codeDlg" hidden>
+  <form id="codeForm" autocomplete="off">
+    <h2 id="codeTitle">Level</h2>
+    <p>Gib das Passwort ein, um dieses Level freizuschalten.</p>
+    <input id="codeInput" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="8" aria-label="Passwort">
+    <div class="msg" id="codeMsg" role="status"></div>
+    <div class="row"><button type="button" id="codeCancel">Abbrechen</button><button type="submit">Freischalten</button></div>
+  </form>
+</div>
+<div class="dlg" id="skinDlg" hidden>
+  <form id="skinForm" autocomplete="off">
+    <h2>Skin-Editor</h2>
+    <div class="ed">
+      <canvas id="skinPrev" aria-label="Vorschau"></canvas>
+      <label>Körperfarbe<input type="color" id="seBody" value="#ee7a5b"></label>
+      <label>Akzentfarbe<input type="color" id="seAccent" value="#fae1c1"></label>
+      <label>Körperform<select id="seShape"></select></label>
+      <label>Flügel<select id="seWing"></select></label>
+      <label>Augen<select id="seEye"></select></label>
+      <label>Schleppe<select id="seTrail"></select></label>
+      <label class="wide">Name<input type="text" id="seName" maxlength="18" placeholder="Mein Vogel"></label>
+    </div>
+    <div class="msg" id="skinMsg" role="status"></div>
+    <div class="row"><button type="button" id="skinCancel">Schließen</button><button type="submit">Speichern</button></div>
+  </form>
+</div>
+<script>
+(() => {
+'use strict';
+
