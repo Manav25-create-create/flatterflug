@@ -8,10 +8,26 @@
 // die 19 Bosse der Level davor nacheinander mit je 2 Treffern.
 // Abstand und Tempo hängen von der Bildbreite ab, damit die Zeit bis zum
 // Vogel überall gleich bleibt (sonst wären breite Bildschirme viel leichter).
+// Mehrteilige Angriffe (zweite Welle, Zahnräder im Takt) stehen in boss.queue
+// und starten später; pending zählt sie von Anfang an mit.
 // ============================================================
-const TWIN_DELAY = 74;
+// Magmageist: zwei Wellen von vorn, nacheinander. Zwischen dem Ende der ersten und dem Eintreffen der
+// zweiten bleiben immer free Frames; Lücke 2 liegt dMin bis dMax über oder unter Lücke 1. Physik
+// (0.45/-8/12): 105 px hoch mit einem Flap alle 20 Frames 27 Frames, 105 px fallen aus der Ruhe 22 Frames,
+// direkt nach einem unglücklichen Flap 45 Frames. free = 45 deckt auch diesen schlechtesten Fall.
+const TWIN = { free: 45, dMin: 60, dMax: 105, near: 40, far: 110 };
+// Uhrwerkeule: drei kleine Zahnräder im Takt, jedes zielt bei seinem eigenen Abschuss
+const TICK = { gap: 18, r: 9, speed: 0.85 };
+// Blütenmotte: langsames Blatt, schwebt ±amp und kommt genau auf Höhe des Vogels an
+const PETAL = { speed: 0.75, amp: 10, half: 30, r: 11 };
+// Pilzkönig: Zickzack ±amp um die Ziellinie, halbe Periode etwa half Frames
+const ZIG = { amp: 30, half: 20, r: 11 };
+// Steinwächter: Neigung der Bahnen beim Kreuzen (relativ zur Waagerechten)
+const CONV = { slope: 0.6, r: 11 };
+// Lagunenkrabbe: Anteil der Flugzeit nach dem Aufprall, Höchsttempo nach oben
+const BOUNCE = { post: 0.6, upMax: 18, r: 12, slow: 1.1 };
 // Rotierendes Viermuster: Der Ring öffnet sich so weit, dass in seiner Mitte Platz für den Vogel bleibt
-const SPIRAL = { spin: 0.07, r0: 6, r1: 54, grow: 48, speed: 2.6 };
+const SPIRAL = { spin: 0.07, r0: 6, r1: 54, grow: 48, speed: 2.6, r: 7 };
 const spiralRadius = age => lerp(SPIRAL.r0, SPIRAL.r1, ease.outCubic(Math.min(1, age / SPIRAL.grow)));
 const SALVO_GAP = 70;                 // Abstand der drei Bahnen einer Salve (Vogel passt knapp dazwischen)
 const GHOST = { speed: 7.5, alpha: 0.42 };
@@ -26,6 +42,8 @@ const bossTTC = () => 48 - 0.4 * game.level;
 const bossSpeedScale = () => Math.max(1, bossDist() / 220);
 const shotSpeed = () => Math.max(2.6, (bossDist() - 39) / bossTTC());
 const waveSpeedNow = () => Math.max(1.8, (bossDist() - 20) / (bossTTC() * 1.6));
+// Abstand der beiden Magma-Wellen in Frames: so lange überdeckt die erste die Vogel-Hitbox, dazu TWIN.free
+const twinDelay = () => Math.round(TWIN.free + (30 + CONFIG.BIRD_W - 2 * CONFIG.SHOT_HITBOX_INSET) / waveSpeedNow());
 const spiralSpeed = () => Math.max(2, (bossDist() - 39) / (bossTTC() * 1.35));
 const rainSpeed = () => Math.max(2.2, (bossDist() - 16) / (bossTTC() * 1.3));
 // Pause zwischen zwei Angriffen (enthält die Vorwarnung): von 90 Frames in Level 1 auf 64 in Level 14
@@ -37,7 +55,7 @@ const bossNeedFor = li => (isRushLevel(li) ? CONFIG.RUSH_HITS : BOSS_LIVES[li]);
 
 function makeBoss(li) {
   const b = { li, x: W + 40, enterX: W + 40, y: Math.round(rand(CONFIG.BOSS_Y_MIN + 60, CONFIG.BOSS_Y_MAX - 60)), dir: RNG() < 0.5 ? -1 : 1, timer: 0, plan: null,
-    flash: 0, vy: 0, rot: 0, t: 0, n: 0, defeated: false, seed: randInt(1, 9999), hits: 0, need: bossNeedFor(game.level) };
+    flash: 0, vy: 0, rot: 0, t: 0, n: 0, defeated: false, seed: randInt(1, 9999), hits: 0, need: bossNeedFor(game.level), queue: [] };
   b.px = b.x; b.py = b.y;
   return b;
 }
@@ -47,8 +65,107 @@ const bossCenter = b => ({ x: b.x + CONFIG.BOSS_W / 2, y: b.y + CONFIG.BOSS_H / 
 
 // Zielen: einmalig beim Abschuss auf die Höhe des Vogels, mit der echten Flugzeit bis zu ihm
 function flightFrames(mx, speed) { return Math.max(12, (mx - birdHomeCX()) / (speed || shotSpeed())); }
-function aimVy(mx, my, speed) {
-  return clamp((birdCY() - my) / flightFrames(mx, speed), -CONFIG.AIM_VY_MAX, CONFIG.AIM_VY_MAX);
+function aimVy(mx, my, speed, ty) {
+  return clamp(((ty === undefined ? birdCY() : ty) - my) / flightFrames(mx, speed), -CONFIG.AIM_VY_MAX, CONFIG.AIM_VY_MAX);
+}
+
+// ---------- Geschlossene Flugbahnen der neuen Muster ----------
+// Höhe als Funktion der Flugzeit t (Frames seit dem Abschuss), x läuft gleichmäßig. Die Bahn trifft bei
+// t = T (Ankunft an der Vogelmitte) genau die Zielhöhe. Spiel und Bot-Vorhersage rechnen mit derselben Formel.
+function pathY(P, t) {
+  switch (P.kind) {
+    case 'petal': return P.y0 + P.vy * t + P.amp * Math.sin(P.w * t);
+    case 'zig': {
+      const u = t / P.half, k = Math.floor(u), f = u - k;
+      return P.y0 + P.vy * t + P.amp * P.dir * (k % 2 ? -1 : 1) * (1 - Math.abs(2 * f - 1));
+    }
+    case 'arc': return P.y0 + P.v * t + P.g * t * t / 2;
+    case 'bounce': {
+      if (t <= P.tb) return P.y0 + P.v1 * t + P.g * t * t / 2;
+      const u = t - P.tb;
+      return P.yb - P.u * u + P.g * u * u / 2;
+    }
+  }
+  return P.y0;
+}
+function pathOrb(m, sp, r, g, P) {
+  const o = orb(m, -sp, 0, r, g);
+  o.path = P;
+  o.x0 = m.x;
+  return o;
+}
+// Blütenblatt: langsam, schwebt ±amp, kommt genau auf Höhe ty an (Sinus hat bei T eine Nullstelle)
+function petalOrb(m, ty, dir, g) {
+  const sp = shotSpeed() * PETAL.speed, T = flightFrames(m.x, sp), n = Math.max(1, Math.round(T / PETAL.half));
+  return pathOrb(m, sp, PETAL.r, g, { kind: 'petal', y0: m.y, vy: (ty - m.y) / T, amp: PETAL.amp * (dir || 1), w: Math.PI * n / T, T });
+}
+// Zickzackblatt: Dreieckschwingung ±amp um die Ziellinie, bei T genau auf der Linie
+function zigOrb(m, ty, dir, g) {
+  const sp = shotSpeed(), T = flightFrames(m.x, sp), n = Math.max(1, Math.round(T / ZIG.half));
+  return pathOrb(m, sp, ZIG.r, g, { kind: 'zig', y0: m.y, vy: (ty - m.y) / T, amp: ZIG.amp, dir: dir || 1, half: T / n, T });
+}
+// Zwei Steine: einer kommt von oben (sinkt beim Kreuzen), einer von unten (steigt), beide treffen sich bei
+// (Vogelmitte, ty). Neigung beim Kreuzen ±CONV.slope, damit klares Hoch- oder Runterfliegen sicher ist.
+function convergeOrbs(m, ty, g) {
+  const sp = shotSpeed(), T = flightFrames(m.x, sp), D = T * sp, d = ty - m.y, s = CONV.slope * D;
+  const out = [];
+  for (const side of [-1, 1]) {
+    // side -1: von oben, kommt mit +slope (abwärts) an; side 1: von unten, kommt mit -slope an
+    const gg = 2 * (-side * s - d) / (T * T), v = -side * CONV.slope * sp - gg * T;
+    const o = pathOrb(m, sp, CONV.r, g, { kind: 'arc', y0: m.y, v, g: gg, T });
+    o.crossY = ty;
+    o.side = side;
+    out.push(o);
+  }
+  return out;
+}
+// Muschel: Wurf nach unten, Aufprall an der Wasserlinie, dann steigt sie gebremst und erreicht genau
+// an der Vogelmitte ihren höchsten Punkt (Höhe ty). Ist der Vogel sehr hoch, fliegt sie etwas langsamer,
+// damit sie nicht schneller als upMax aus dem Wasser schießt.
+function bounceOrb(m, ty, g) {
+  const r = BOUNCE.r, yb = GROUND_Y - r, h = Math.max(1, yb - ty), D = Math.max(12, m.x - birdHomeCX());
+  const T = Math.max(bossTTC() * BOUNCE.slow, 2 * h / (BOUNCE.post * BOUNCE.upMax));
+  const t2 = T * BOUNCE.post, tb = T - t2, gr = 2 * h / (t2 * t2), u = gr * t2;
+  const v1 = (yb - m.y) / tb - gr * tb / 2;
+  const o = pathOrb(m, D / T, r, g, { kind: 'bounce', y0: m.y, v1, g: gr, tb, yb, u, T });
+  o.bounceX = m.x - D / T * tb;
+  return o;
+}
+// Kleines Zahnrad: gezielt wie ein normaler Schuss, etwas kleiner und langsamer
+function tickGear(m, ty, g) {
+  const sp = shotSpeed() * TICK.speed, o = orb(m, -sp, aimVy(m.x, m.y, sp, ty), TICK.r, g);
+  o.type = 'gear';
+  o.ang = 0;
+  return o;
+}
+
+// Ein Frame Bewegung ohne Nebenwirkungen (Spiel und Bot nutzen dieselbe Rechnung; nicht für den Ring).
+// p.t ist für diesen Frame schon erhöht.
+function orbMove(p) {
+  if (p.laneY !== undefined) { p.x += p.vx; p.y = lerp(p.laneFrom, p.laneY, ease.outCubic(Math.min(1, p.t / 24))); return; }
+  if (p.path) {
+    const py = p.y;
+    p.x = p.x0 + p.vx * p.t;
+    p.y = pathY(p.path, p.t);
+    p.vy = p.y - py;
+    return;
+  }
+  if (p.riseAt && p.t > p.riseAt) p.vy = Math.max(p.vy - p.riseAcc, -7);
+  p.vy += p.grav;
+  p.x += p.vx;
+  p.y += p.vy;
+}
+// Zerfällt das Geschoss in diesem Frame? Dann Geschwindigkeitsversätze und Radius der Teile
+function orbBreak(p) {
+  if (p.laneY !== undefined || p.path) return null;
+  if (p.splitAt && p.t === p.splitAt) return { dvs: [-1.4, 0, 1.4], r: 10, shard: false };
+  if (p.shatterX && p.x <= p.shatterX) return { dvs: [-1.5, 0, 1.5], r: 7, shard: true };
+  return null;
+}
+// Kopie der Bewegungsdaten für Vorhersagen
+function orbClone(s) {
+  return { x: s.x, y: s.y, vx: s.vx, vy: s.vy, r: s.r, grav: s.grav || 0, t: s.t, riseAt: s.riseAt, riseAcc: s.riseAcc, splitAt: s.splitAt,
+    shatterX: s.shatterX, laneFrom: s.laneFrom, laneY: s.laneY, path: s.path, x0: s.x0 };
 }
 
 // Der Boss sucht träge die Höhe des Vogels und schwebt dabei leicht auf und ab
@@ -92,8 +209,31 @@ function updateBossIdle() {
   if (boss.flash > 0) boss.flash--;
 }
 
+// Wartende Teile eines laufenden Angriffs starten (zweite Welle, weitere Zahnräder)
+function runBossQueue() {
+  if (!boss.queue.length) return;
+  const due = [];
+  boss.queue = boss.queue.filter(q => (--q.wait > 0 ? true : (due.push(q), false)));
+  for (const q of due) launchQueued(q);
+}
+function launchQueued(q) {
+  const m = bossMouth(), C = COLORS[boss.li];
+  if (q.kind === 'wall') {
+    const w = wall(boss.x - 20, -waveSpeedNow(), q.gapY, q.group);
+    w.tag = q.tag;
+    shots.push(w);
+  } else if (q.kind === 'tick') {
+    const o = tickGear(m, birdCY(), q.group);
+    o.tick = q.tick;
+    shots.push(o);
+  }
+  if (!SIM.on) burst(m.x, m.y, 4, [C.accent, CREAM], 1.8, 12, { grav: 0 });
+  sfx('shoot');
+}
+
 function updateBossFight() {
   updateBossIdle();
+  runBossQueue();
   // Nächster Angriff erst, wenn der vorige vorbei ist; reichen die Ausweichzüge, kommt keiner mehr.
   // Hat die Vorwarnung begonnen (Plan steht), läuft sie bis zum Abschuss durch, auch wenn Säule
   // oder Laser schon als eigener Angriff unterwegs sind.
@@ -129,7 +269,7 @@ function planAttack(pattern) {
     }
     case 'wave': return { gapY: gapAway(70, 150) };
     case 'column': {
-      shots.push({ type: 'column', li: boss.li, x: birdHomeCX(), y0: by - 90, y1: by + 90, w: 46, warn: PATTERNS.column.warn, active: PATTERNS.column.active,
+      shots.push({ type: 'column', li: boss.li, x: birdHomeCX(), y0: by - 66, y1: by + 66, w: 46, warn: PATTERNS.column.warn, active: PATTERNS.column.active,
         t: 0, group: newAttack(1), seed: randInt(1, 9999) });
       return {};
     }
@@ -138,16 +278,15 @@ function planAttack(pattern) {
       return {};
     }
     case 'twinwave': {
-      const gapR = gapAway(40, 130);
+      // Lücke 1: 40 bis 110 px von der jetzigen Höhe (bis zur Ankunft vergehen mindestens 70 Frames).
+      // Lücke 2: 60 bis 105 px über oder unter Lücke 1, beide schon jetzt an der Vogelspalte markiert.
+      const g1 = gapAway(TWIN.near, TWIN.far);
       const lo = mg + half, hi = GROUND_Y - mg - half, opts = [];
-      for (const d of [-1, 1]) { const g = gapR + d * (90 + RNG() * 40); if (g >= lo && g <= hi) opts.push(g); }
-      return { gapR, gapL: opts.length ? pick(opts) : clamp(gapR + 120, lo, hi) };
+      const dd = rand(TWIN.dMin, TWIN.dMax);
+      for (const d of [-1, 1]) { const g = g1 + d * dd; if (g >= lo && g <= hi) opts.push(g); }
+      return { g1, g2: opts.length ? pick(opts) : clamp(g1 + (g1 < (lo + hi) / 2 ? dd : -dd), lo, hi) };
     }
-    case 'gearroll': {
-      // Unten rollt es am Boden, oben an der Decke; die Kante reicht 46 px über den Vogel hinaus
-      if (by > GROUND_Y / 2) return { r: Math.round(clamp((GROUND_Y - by + 46) / 2, 38, 150)), ceil: false };
-      return { r: Math.round(clamp((by + 46) / 2, 38, 150)), ceil: true };
-    }
+    case 'petal': case 'zigzag': return { dir: RNG() < 0.5 ? -1 : 1 };
     case 'emberrain': {
       const vx = rainSpeed(), drift = 0.6, T = (boss.x - birdHomeX()) / vx;
       const g0 = clamp(gapAway(60, 130) - drift * T * 0.5, mg + half, GROUND_Y - mg - half - drift * T);
@@ -219,7 +358,7 @@ function fireAttack(pattern, plan) {
       const vy = clamp((endY - m.y) / tt, -CONFIG.AIM_VY_MAX, CONFIG.AIM_VY_MAX);
       const g = newAttack(4), c = { x: m.x, y: m.y, vx: -sp, vy, age: 0, f: -1 };
       for (let k = 0; k < 4; k++) {
-        const o = orb(m, -sp, vy, 9, g);
+        const o = orb(m, -sp, vy, SPIRAL.r, g);
         o.orbit = c;
         o.ang = k * Math.PI / 2;
         o.rad = 6;
@@ -234,22 +373,36 @@ function fireAttack(pattern, plan) {
       break;
     }
     case 'twinwave': {
-      const g = newAttack(2), x0 = boss.x - 20, ws = waveSpeedNow();
-      const tR = (x0 - (birdHomeX() + CONFIG.BIRD_W)) / ws;
-      // Die linke Welle trifft TWIN_DELAY Frames nach der rechten ein: knapp eine Sekunde zum Umsteigen
-      const xL = birdHomeX() - ws * (tR + TWIN_DELAY) - 30;
-      shots.push(wall(x0, -ws, plan.gapR, g));
-      const wl = wall(xL, ws, plan.gapL, g);
-      wl.fromLeft = true;
-      shots.push(wl);
+      // Beide Wellen kommen von vorn; die zweite startet twinDelay() Frames später am selben Ort
+      const g = newAttack(2), g1 = plan.g1 !== undefined ? plan.g1 : 272, g2 = plan.g2 !== undefined ? plan.g2 : 272;
+      const w1 = wall(boss.x - 20, -waveSpeedNow(), g1, g);
+      w1.tag = 1;
+      shots.push(w1);
+      boss.queue.push({ kind: 'wall', wait: twinDelay(), gapY: g2, group: g, tag: 2 });
       break;
     }
-    case 'gearroll': {
-      // rollt vom Boss aus am Boden oder an der Decke auf den Vogel zu
-      const r = plan.r || 50, x = boss.x + 30, y = plan.ceil ? r : GROUND_Y - r;
-      shots.push({ type: 'gear', li: boss.li, x, px: x, y, py: y, r, vx: -S * 0.9, vy: 0, ang: 0, t: 0, group: newAttack(1), ceil: !!plan.ceil });
+    case 'ticktock': {
+      // tick (jetzt), tack, tick: jedes Zahnrad zielt bei seinem eigenen Abschuss
+      const g = newAttack(3), o = tickGear(m, birdCY(), g);
+      o.tick = 1;
+      shots.push(o);
+      boss.queue.push({ kind: 'tick', wait: TICK.gap, group: g, tick: 2 }, { kind: 'tick', wait: TICK.gap * 2, group: g, tick: 3 });
       break;
     }
+    case 'petal':
+      shots.push(petalOrb(m, birdCY(), plan.dir, newAttack(1)));
+      break;
+    case 'zigzag':
+      shots.push(zigOrb(m, birdCY(), plan.dir, newAttack(1)));
+      break;
+    case 'converge': {
+      const g = newAttack(2);
+      for (const o of convergeOrbs(m, birdCY(), g)) shots.push(o);
+      break;
+    }
+    case 'bounce':
+      shots.push(bounceOrb(m, birdCY(), newAttack(1)));
+      break;
     case 'emberrain': {
       const x = boss.x - 16;
       shots.push({ type: 'rain', li: boss.li, x, px: x, w: 46, vx: -rainSpeed(), gapY: plan.gapY !== undefined ? plan.gapY : 260, gapH: CONFIG.WAVE_GAP, drift: plan.drift || 0.6,
@@ -269,6 +422,7 @@ function makeGhost(s) {
   s.orbit = null;
   s.laneY = undefined;
   s.grav = 0; s.riseAt = 0; s.splitAt = 0; s.shatterX = 0;
+  s.path = null; s.crossY = undefined; s.bounceX = undefined; s.tag = 0;
   // Abprall: Richtung umkehren, etwas Höhe behalten
   s.vx = Math.max(2.5, Math.abs(s.vx || 3)) * (s.x < W / 2 ? 1 : -1);
   s.vy = -(s.vy || 0) * 0.6;
@@ -322,7 +476,7 @@ function updateShots() {
     if (s.ghost) { if (updateGhost(s)) keep.push(s); continue; }
     const C = COLORS[s.li !== undefined ? s.li : game.level];
     let gone = false, bounce = false;
-    if (s.type === 'orb') {
+    if (s.type === 'orb' || s.type === 'gear') {
       if (s.orbit) {
         const c = s.orbit;
         if (c.f !== frame) { c.f = frame; c.x += c.vx; c.y += c.vy; c.age++; }
@@ -331,44 +485,30 @@ function updateShots() {
         s.x = c.x + Math.cos(s.ang) * s.rad;
         s.y = c.y + Math.sin(s.ang) * s.rad;
         s.vx = c.vx; s.vy = c.vy;
-      } else if (s.laneY !== undefined) {
-        s.x += s.vx;
-        s.y = lerp(s.laneFrom, s.laneY, ease.outCubic(Math.min(1, s.t / 24)));
       } else {
-        if (s.riseAt && s.t > s.riseAt) s.vy = Math.max(s.vy - s.riseAcc, -7);
-        s.vy += s.grav;
-        s.x += s.vx;
-        s.y += s.vy;
-        if (s.splitAt && s.t === s.splitAt) {
+        const P = s.path, before = P && P.kind === 'bounce' && s.t - 1 <= P.tb;
+        orbMove(s);
+        if (s.type === 'gear') s.ang += s.vx / s.r;
+        if (before && s.t > P.tb) { burst(s.bounceX, GROUND_Y - 4, 7, [CREAM, C.accent], 2.2, 16, { grav: 0.12 }); sfx('thud'); }
+        const br = orbBreak(s);
+        if (br) {
           const a = attacks.find(q => q.id === s.group);
-          if (a) a.pending += 3;
-          for (const dv of [-1.4, 0, 1.4]) {
-            const piece = orb(s, s.vx, s.vy + dv, 10, s.group);
+          if (a) a.pending += br.dvs.length;
+          for (const dv of br.dvs) {
+            const piece = orb(s, s.vx, s.vy + dv, br.r, s.group);
             piece.li = s.li;
             piece.piece = true;
+            if (br.shard) piece.shard = true;
             keep.push(piece);
           }
-          burst(s.x, s.y, 8, [C.pipe, C.accent, CREAM], 2.2, 18, { kind: 'shard', vr: 0.2 });
-          gone = true;
-        }
-        if (s.shatterX && s.x <= s.shatterX) {
-          const a = attacks.find(q => q.id === s.group);
-          if (a) a.pending += 3;
-          for (const dv of [-1.5, 0, 1.5]) {
-            const piece = orb(s, s.vx, s.vy + dv, 7, s.group);
-            piece.li = s.li;
-            piece.piece = true;
-            piece.shard = true;
-            keep.push(piece);
-          }
-          burst(s.x, s.y, 10, [C.pipe, C.accent, CREAM], 2.6, 18, { kind: 'prism', vr: 0.25 });
-          sfx('shatter');
+          if (br.shard) { burst(s.x, s.y, 10, [C.pipe, C.accent, CREAM], 2.6, 18, { kind: 'prism', vr: 0.25 }); sfx('shatter'); }
+          else burst(s.x, s.y, 8, [C.pipe, C.accent, CREAM], 2.2, 18, { kind: 'shard', vr: 0.2 });
           gone = true;
         }
       }
       if (!gone) {
         if (s.y + s.r * 0.5 > GROUND_Y) { burst(s.x, GROUND_Y - 2, 5, [C.accent, CREAM], 2, 14, { grav: 0.15 }); s.y = GROUND_Y - s.r; bounce = true; }
-        else if (s.x < -s.r - 6 || s.x > W + 90 || s.y < (s.grav > 0 ? -240 : -s.r - 20)) { s.x = clamp(s.x, -s.r, W + 40); s.y = clamp(s.y, -s.r, GROUND_Y - s.r); bounce = true; }
+        else if (s.x < -s.r - 6 || s.x > W + 90 || s.y < (s.grav > 0 || s.path ? -240 : -s.r - 20)) { s.x = clamp(s.x, -s.r, W + 40); s.y = clamp(s.y, -s.r, GROUND_Y - s.r); bounce = true; }
       }
     } else if (s.type === 'wave' || s.type === 'rain') {
       s.x += s.vx;
@@ -379,10 +519,6 @@ function updateShots() {
         for (const gy of [s.gapY - s.gapH / 2 - 26, s.gapY + s.gapH / 2 + 26]) keep.push(ghostSpark(ex, clamp(gy, 20, GROUND_Y - 20), s.group, s.li, 10));
         gone = true;
       }
-    } else if (s.type === 'gear') {
-      s.x += s.vx;
-      s.ang += s.vx / s.r;
-      if (s.x + s.r < -6) { s.x = -s.r; bounce = true; }
     } else if (s.type === 'column') {
       if (s.t === s.warn) { flash(0.25, mix(CREAM, C.accent, 0.4)); sfx('thunder'); }
       if (s.t >= s.warn + s.active + 12) { keep.push(ghostSpark(s.x, clamp((s.y0 + s.y1) / 2, 20, GROUND_Y - 20), s.group, s.li, 10)); gone = true; }
@@ -438,12 +574,11 @@ function laserLine(s) {
 function shotHits(s, box) {
   if (s.ghost) return false;
   switch (s.type) {
-    case 'orb': return circleBox(s.x, s.y, s.r, box);
+    case 'orb': case 'gear': return circleBox(s.x, s.y, s.r, box);
     case 'wave': case 'rain': {
       if (!(box.x < s.x + s.w && box.x + box.w > s.x)) return false;
       return box.y < s.gapY - s.gapH / 2 || box.y + box.h > s.gapY + s.gapH / 2;
     }
-    case 'gear': return circleBox(s.x, s.y, s.r - 4, box);
     case 'column':
       return s.t >= s.warn && s.t < s.warn + s.active && overlap(box, { x: s.x - s.w / 2, y: s.y0, w: s.w, h: s.y1 - s.y0 });
     case 'laser': {
@@ -461,6 +596,7 @@ const SHOT_CAUSE = { orb: 'Geschoss', wave: 'Welle', rain: 'Glutregen', gear: 'Z
 
 // ---------- Zeichnen: Angriffe ----------
 function drawShots(li, a) {
+  const twins = drawShotMarks(li, a);
   // Rückpraller zuerst und blass, damit echte Geschosse immer obenauf und gut lesbar bleiben
   for (const pass of [true, false]) {
     for (const s of shots) {
@@ -476,6 +612,82 @@ function drawShots(li, a) {
       ctx.globalAlpha = 1;
     }
   }
+  // Magma-Lücken an der Vogelspalte obenauf, damit die abziehende erste Welle Lücke 2 nicht verdeckt.
+  // Lücke 2 ist halb deckend, solange Welle 1 noch nicht am Vogel vorbei ist.
+  for (const e of twins.values()) drawTwinMarks(e.C, e.g1, e.g2, 1, e.g1 !== undefined ? 0.6 : 1);
+}
+
+// Markierung einer Lücke an der Vogelspalte: Klammern oben und unten, Nummer daneben
+function gapMark(x, gy, num, al, C) {
+  const half = CONFIG.WAVE_GAP / 2;
+  ctx.fillStyle = rgba(C.accent, 0.28 * al);
+  ctx.fillRect(x - 4, gy - half, 5, half * 2);
+  ctx.strokeStyle = rgba(CREAM, 0.9 * al);
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(x + 9, gy - half); ctx.lineTo(x, gy - half); ctx.lineTo(x, gy - half + 14);
+  ctx.moveTo(x + 9, gy + half); ctx.lineTo(x, gy + half); ctx.lineTo(x, gy + half - 14);
+  ctx.stroke();
+  if (num) {
+    circle(x - 11, gy, 9, rgba(INK, 0.55 * al));
+    text(String(num), x - 11, gy + 0.5, FS.xs, rgba(CREAM, al));
+  }
+}
+// Beide Magma-Lücken an der Vogelspalte: Lücke 1 direkt vor dem Vogel, Lücke 2 etwas weiter links,
+// dazu ein gestrichelter Pfeil von 1 nach 2 (so weit geht es nach der ersten Welle hoch oder runter)
+function drawTwinMarks(C, g1, g2, al1, al2) {
+  const x1 = birdHomeX() - 10, x2 = birdHomeX() - 36;
+  if (g2 !== undefined) gapMark(x2, g2, 2, al2, C);
+  if (g1 !== undefined) gapMark(x1, g1, 1, al1, C);
+  if (g1 === undefined || g2 === undefined) return;
+  const d = Math.sign(g2 - g1) || 1, ax = x1 - 11, ay = g1 + d * 10, bx = x2 - 11, by = g2 - d * 10;
+  ctx.strokeStyle = rgba(CREAM, 0.7 * al1);
+  ctx.lineWidth = 2;
+  ctx.setLineDash([3, 4]);
+  ctx.beginPath();
+  ctx.moveTo(ax, ay); ctx.lineTo(bx, by);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  const L = Math.hypot(bx - ax, by - ay) || 1, ux = (bx - ax) / L, uy = (by - ay) / L;
+  poly([[bx, by], [bx - ux * 7 - uy * 4, by - uy * 7 + ux * 4], [bx - ux * 7 + uy * 4, by - uy * 7 - ux * 4]], rgba(CREAM, 0.8 * al1));
+}
+// Kreuzungspunkt der Steine: hohles X, dessen Arme über den Vogel hinausragen
+function crossMark(cx, cy, al) {
+  ctx.save();
+  ctx.strokeStyle = rgba(CREAM, al);
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  for (const [dx, dy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) { ctx.moveTo(cx + dx * 13, cy + dy * 10); ctx.lineTo(cx + dx * 25, cy + dy * 19); }
+  ctx.stroke();
+  ctx.restore();
+}
+// Hinweise zu fliegenden Angriffen: Lückennummern der Magma-Wellen (auch für die noch wartende zweite),
+// Kreuzungspunkt der Steine, Aufprallstelle der Muschel
+function drawShotMarks(li, a) {
+  const twins = new Map(), twin = g => twins.get(g) || (twins.set(g, {}), twins.get(g));
+  for (const s of shots) {
+    if (s.ghost) continue;
+    const C = COLORS[s.li !== undefined ? s.li : li];
+    if (s.type === 'wave' && s.tag) {
+      const x = lerp(s.px, s.x, a);
+      if (x <= birdHomeX() - 30) continue;
+      twin(s.group)['g' + s.tag] = s.gapY;
+      twin(s.group).C = C;
+      circle(x + s.w / 2, s.gapY, 10, rgba(INK, 0.45));
+      text(String(s.tag), x + s.w / 2, s.gapY + 0.5, FS.xs, CREAM);
+    } else if (s.crossY !== undefined && s.side === -1 && s.x > birdHomeCX()) {
+      crossMark(birdHomeCX(), s.crossY, 0.8);
+    } else if (s.bounceX !== undefined && s.path && s.t <= s.path.tb) {
+      ctx.strokeStyle = rgba(CREAM, 0.7);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(s.bounceX, GROUND_Y - 3, 16, 5, 0, 0, TAU);
+      ctx.stroke();
+    }
+  }
+  if (boss && boss.queue) for (const q of boss.queue) if (q.kind === 'wall') { twin(q.group)['g' + q.tag] = q.gapY; twin(q.group).C = COLORS[boss.li]; }
+  return twins;
 }
 
 function drawOrb(s, C, st, x, y) {
@@ -643,9 +855,9 @@ function drawRain(s, C, x) {
   ctx.stroke();
 }
 
-// Rollendes Zahnrad am Boden (Muster 13)
+// Kleines Zahnrad der Uhrwerkeule (Muster ticktock)
 function gearPath(x, y, r, ang, teeth) {
-  const rin = r - Math.max(6, r * 0.16);
+  const rin = r - Math.max(2.6, r * 0.24);
   ctx.beginPath();
   for (let k = 0; k < teeth; k++) {
     const a0 = ang + k * TAU / teeth, a1 = a0 + TAU / teeth * 0.16, a2 = a0 + TAU / teeth * 0.34, a3 = a0 + TAU / teeth * 0.5;
@@ -659,8 +871,9 @@ function gearPath(x, y, r, ang, teeth) {
   return rin;
 }
 function drawGearShot(s, C, x, y) {
-  const r = s.r, teeth = Math.max(10, Math.round(r / 4.5)), brass = C.pipe;
-  if (!s.ghost && !s.ceil) ellipse(x + 6, GROUND_Y + 2, r * 0.9, 6, 0, rgba(INK, CONFIG.SHADOW_ALPHA));
+  // Zähne ragen etwas über den Trefferradius hinaus, der Körper entspricht ihm
+  const r = s.r + 1.5, teeth = 8, brass = C.pipe;
+  if (!s.ghost) ctx.drawImage(glowSprite(C.accent), x - r * 2, y - r * 2, r * 4, r * 4);
   gearPath(x + SHADOW.x * 0.5, y + SHADOW.y * 0.5, r, s.ang, teeth);
   ctx.fillStyle = rgba(INK, CONFIG.SHADOW_ALPHA);
   ctx.fill();
@@ -851,6 +1064,46 @@ function drawBossObj(b, a) {
   }
   ctx.restore();
   if (active && wp > 0 && !b.defeated) drawTelegraph(li, wp, bx, by);
+  else if (active && !b.defeated && b.queue && b.queue.length) drawQueueHint(b, bx, by);
+}
+
+// Uhr am Maul der Uhrwerkeule: drei Marken für die drei Zahnräder (hohl = schon unterwegs), der Zeiger
+// tickt in Vierteln auf die Marke des nächsten Zahnrads zu und steht beim Abschuss genau darauf.
+// s: Stellung in Marken (-1 bis 0 während der Vorwarnung, danach bis 2). Dazu eine Ziellinie auf den Vogel.
+function drawTickClock(C, m, al, fired, s) {
+  const cx = m.x - 21, cy = m.y, R = 11;
+  if (bird) {
+    ctx.setLineDash([3, 6]);
+    ctx.strokeStyle = rgba(CREAM, 0.28 * al);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(cx - R - 2, cy);
+    ctx.lineTo(birdHomeCX() + 24, birdCY());
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  circle(cx, cy, R + 4, rgba(C.accent, 0.25 * al));
+  circle(cx, cy, R, rgba(INK, 0.6 * al));
+  ctx.strokeStyle = rgba(CREAM, 0.85 * al);
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, TAU);
+  ctx.stroke();
+  for (let k = 0; k < 3; k++) {
+    const an = -Math.PI / 2 + k * TAU / 3, px = cx + Math.cos(an) * (R + 7), py = cy + Math.sin(an) * (R + 7);
+    if (k >= fired) circle(px, py, 3.2, rgba(mix(C.accent, CREAM, 0.3), al));
+    else { ctx.strokeStyle = rgba(CREAM, 0.5 * al); ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(px, py, 3, 0, TAU); ctx.stroke(); }
+  }
+  const an = -Math.PI / 2 + Math.floor(s * 4 + 1e-6) / 4 * TAU / 3;
+  line(cx, cy, cx + Math.cos(an) * R * 0.85, cy + Math.sin(an) * R * 0.85, rgba(CREAM, al), 2.2);
+  circle(cx, cy, 2, rgba(CREAM, al));
+}
+// Nach dem ersten Zahnrad tickt die Uhr weiter, bis alle drei unterwegs sind
+function drawQueueHint(b, bx, by) {
+  const ticks = b.queue.filter(q => q.kind === 'tick');
+  if (!ticks.length) return;
+  const w = Math.min(...ticks.map(q => q.wait)), fired = 3 - ticks.length;
+  drawTickClock(COLORS[b.li], { x: bx + CONFIG.BOSS_MOUTH_DX, y: by + CONFIG.BOSS_MOUTH_DY }, 1, fired, fired - w / TICK.gap);
 }
 
 // Sichtbare Vorwarnung am Maul, dazu musterspezifische Hinweise
@@ -906,36 +1159,38 @@ function drawTelegraph(li, p, bx, by) {
   } else if (pat === 'arc') {
     ctx.fillStyle = rgba(CREAM, 0.6 * p);
     for (let k = 1; k <= 5; k++) circle(m.x - k * 9, m.y - Math.sin(k / 5 * 1.4) * 22 * p, 1.6, ctx.fillStyle);
-  } else if (pat === 'twinwave' && plan.gapR !== undefined) {
-    const half = CONFIG.WAVE_GAP / 2;
-    const mark = (x, gy, d) => {
-      ctx.strokeStyle = rgba(CREAM, 0.85 * p);
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.moveTo(x + 8 * d, gy - half); ctx.lineTo(x, gy - half); ctx.lineTo(x, gy - half + 12);
-      ctx.moveTo(x + 8 * d, gy + half); ctx.lineTo(x, gy + half); ctx.lineTo(x, gy + half - 12);
-      ctx.stroke();
-      ctx.fillStyle = rgba(C.accent, 0.35 * p);
-      ctx.fillRect(d > 0 ? x - 10 : x + 2, gy - half, 8, half * 2);
-    };
-    mark(bx - 22, plan.gapR, 1);
-    mark(6, plan.gapL, -1);
-    // Pfeil am linken Rand: von dort kommt die zweite Welle
-    ctx.fillStyle = rgba(C.accent, 0.5 + 0.5 * p);
-    poly([[20, plan.gapL - 9], [32, plan.gapL], [20, plan.gapL + 9]], ctx.fillStyle);
-  } else if (pat === 'gearroll' && plan.r) {
-    const r = plan.r, cy = plan.ceil ? r : GROUND_Y - r, edge = plan.ceil ? 2 * r : GROUND_Y - 2 * r;
-    ctx.setLineDash([6, 6]);
-    ctx.strokeStyle = rgba(CREAM, 0.35 + 0.5 * p);
-    ctx.lineWidth = 1.5;
+  } else if (pat === 'twinwave' && plan.g1 !== undefined) {
+    // Beide Lücken an der Vogelspalte, nummeriert in der Reihenfolge der Wellen; Lücke 1 auch am Boss
+    const half = CONFIG.WAVE_GAP / 2, x = bx - 22, al = 0.35 + 0.65 * p;
+    drawTwinMarks(C, plan.g1, plan.g2, al, al * 0.75);
+    ctx.strokeStyle = rgba(CREAM, 0.85 * p);
+    ctx.lineWidth = 2.5;
     ctx.beginPath();
-    ctx.arc(bx + 30, cy, r, 0, TAU);
-    ctx.moveTo(0, edge);
-    ctx.lineTo(W, edge);
+    ctx.moveTo(x + 8, plan.g1 - half); ctx.lineTo(x, plan.g1 - half); ctx.lineTo(x, plan.g1 - half + 12);
+    ctx.moveTo(x + 8, plan.g1 + half); ctx.lineTo(x, plan.g1 + half); ctx.lineTo(x, plan.g1 + half - 12);
     ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = rgba(C.accent, 0.12 + 0.2 * p);
-    if (plan.ceil) ctx.fillRect(0, 0, W, 2 * r); else ctx.fillRect(0, GROUND_Y - 2 * r, W, 2 * r);
+  } else if ((pat === 'petal' || pat === 'zigzag' || pat === 'bounce' || pat === 'converge') && bird) {
+    // Vorschau der Bahn auf die jetzige Höhe des Vogels (beim Abschuss wird sie festgelegt)
+    const ty = birdCY(), list = pat === 'petal' ? [petalOrb(m, ty, plan.dir, 0)] : pat === 'zigzag' ? [zigOrb(m, ty, plan.dir, 0)]
+      : pat === 'bounce' ? [bounceOrb(m, ty, 0)] : convergeOrbs(m, ty, 0);
+    for (const o of list) {
+      const T = o.path.T, pts = [];
+      for (let t = 2; t <= T; t += pat === 'zigzag' ? 2 : 3) pts.push([o.x0 + o.vx * t, pathY(o.path, t), 1.8 + 1 * p]);
+      dots(pts, rgba(CREAM, 0.3 + 0.5 * p));
+    }
+    const cx = birdHomeCX();
+    if (pat === 'converge') crossMark(cx, ty, 0.45 + 0.5 * p);
+    else if (pat === 'bounce') {
+      const o = list[0];
+      ctx.strokeStyle = rgba(CREAM, 0.4 + 0.5 * p);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(o.bounceX, GROUND_Y - 3, 10 + 8 * p, 3 + 2.5 * p, 0, 0, TAU);
+      ctx.stroke();
+      circle(cx, ty, 3 + p, rgba(C.accent, 0.5 + 0.5 * p));
+    } else circle(cx, ty, 3 + p, rgba(C.accent, 0.5 + 0.5 * p));
+  } else if (pat === 'ticktock') {
+    drawTickClock(C, m, 0.4 + 0.6 * p, 0, p - 1);
   } else if (pat === 'emberrain' && plan.gapY !== undefined) {
     const x = bx - 22, top = plan.gapY - CONFIG.WAVE_GAP / 2, bot = plan.gapY + CONFIG.WAVE_GAP / 2;
     ctx.strokeStyle = rgba(CREAM, 0.85 * p);

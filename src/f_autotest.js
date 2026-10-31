@@ -72,12 +72,25 @@ function pipeTarget(last) {
 }
 
 // ---------- Bosskampf: Vorhersage der Angriffe an der Vogelspalte ----------
+// fut[k]: gesperrte Höhenbereiche der Vogelmitte im k-ten kommenden Update. fut.dyn: Geschosse, die erst
+// später starten und dabei auf die dann aktuelle Höhe des Vogels zielen (Zahnräder im Takt, gezielte
+// Muster während der Vorwarnung); die rechnet simulateTarget für jede geplante Flugbahn einzeln durch.
+const BOT_COL = () => [birdHomeX() - 3, birdHomeX() + CONFIG.BIRD_W + 3];
+const BOT_MARGIN = 15;
+// Wird das Geschoss in diesem Frame zum Rückpraller (wie in updateShots)?
+function orbGone(p) {
+  return p.y + p.r * 0.5 > GROUND_Y || p.x < -p.r - 6 || p.x > W + 90 || p.y < (p.grav > 0 || p.path ? -240 : -p.r - 20);
+}
+// Boss-x nach k Updates (updateBossIdle nähert ihn mit 10 % pro Frame der Heimposition)
+const bossXAt = k => bossHomeX() + (boss.x - bossHomeX()) * Math.pow(0.9, k);
 function predictThreats(steps) {
-  const fut = [], bx0 = birdHomeX() - 3, bx1 = birdHomeX() + CONFIG.BIRD_W + 3, m = 15;
+  const fut = [], [bx0, bx1] = BOT_COL(), m = BOT_MARGIN;
+  fut.dyn = [];
   const add = (k, lo, hi) => { (fut[k] || (fut[k] = [])).push([lo, hi]); };
+  const inCol = p => p.x + p.r > bx0 && p.x - p.r < bx1;
   for (const s of shots) {
     if (s.ghost) continue;                       // Rückpraller treffen den Vogel nicht
-    if (s.type === 'orb') {
+    if (s.type === 'orb' || s.type === 'gear') {
       if (s.orbit) {
         const c = s.orbit;
         let x = c.x, y = c.y, age = c.age, ang = s.ang;
@@ -88,28 +101,24 @@ function predictThreats(steps) {
         }
         continue;
       }
-      let pcs = [{ x: s.x, y: s.y, vx: s.vx, vy: s.vy, r: s.r, grav: s.grav || 0, t: s.t, riseAt: s.riseAt, riseAcc: s.riseAcc, splitAt: s.splitAt, shatterX: s.shatterX, laneFrom: s.laneFrom, laneY: s.laneY }];
+      // dieselbe Bewegung wie im Spiel (orbMove/orbBreak), samt Zerfall in Teile
+      let pcs = [orbClone(s)];
       for (let k = 1; k <= steps && pcs.length; k++) {
         const next = [];
         for (const p of pcs) {
           p.t++;
-          if (p.laneY !== undefined) { p.x += p.vx; p.y = lerp(p.laneFrom, p.laneY, ease.outCubic(Math.min(1, p.t / 24))); }
-          else {
-            if (p.riseAt && p.t > p.riseAt) p.vy = Math.max(p.vy - p.riseAcc, -7);
-            p.vy += p.grav;
-            p.x += p.vx;
-            p.y += p.vy;
-            if (p.splitAt && p.t === p.splitAt) {
-              for (const dv of [-1.4, 0, 1.4]) next.push({ x: p.x, y: p.y, vx: p.vx, vy: p.vy + dv, r: 10, grav: 0, t: 0 });
-              continue;
+          orbMove(p);
+          const br = orbBreak(p);
+          if (br) {
+            for (const dv of br.dvs) {
+              const q = { x: p.x, y: p.y, vx: p.vx, vy: p.vy + dv, r: br.r, grav: 0, t: 0 };
+              if (inCol(q)) add(k, q.y - q.r - m, q.y + q.r + m);
+              next.push(q);
             }
-            if (p.shatterX && p.x <= p.shatterX) {
-              for (const dv of [-1.5, 0, 1.5]) next.push({ x: p.x, y: p.y, vx: p.vx, vy: p.vy + dv, r: 7, grav: 0, t: 0 });
-              continue;
-            }
+            continue;
           }
-          if (p.y > GROUND_Y + 20 || p.x < -40) continue;
-          if (p.x + p.r > bx0 && p.x - p.r < bx1) add(k, p.y - p.r - m, p.y + p.r + m);
+          if (orbGone(p)) continue;
+          if (inCol(p)) add(k, p.y - p.r - m, p.y + p.r + m);
           next.push(p);
         }
         pcs = next;
@@ -121,12 +130,6 @@ function predictThreats(steps) {
         if (s.type === 'rain') gy += s.drift;
         if (x < bx1 && x + s.w > bx0) { add(k, -100, gy - s.gapH / 2 + m); add(k, gy + s.gapH / 2 - m, H + 100); }
       }
-    } else if (s.type === 'gear') {
-      let x = s.x;
-      for (let k = 1; k <= steps; k++) {
-        x += s.vx;
-        if (x + s.r > bx0 && x - s.r < bx1) { if (s.ceil) add(k, -100, 2 * s.r + m); else add(k, GROUND_Y - 2 * s.r - m, H + 100); }
-      }
     } else if (s.type === 'column') {
       for (let k = 1; k <= steps; k++) { const tt = s.t + k; if (tt >= s.warn - 1 && tt < s.warn + s.active + 1) add(k, s.y0 - m, s.y1 + m); }
     } else if (s.type === 'laser') {
@@ -134,41 +137,54 @@ function predictThreats(steps) {
       for (let k = 1; k <= steps; k++) { const tt = s.t + k; if (tt >= s.warn - 1 && tt < s.warn + s.active + 1) add(k, Math.min(ya, yb) - s.thick / 2 - m, Math.max(ya, yb) + s.thick / 2 + m); }
     }
   }
-  if (boss && boss.plan && game.state === 'BOSS_FIGHT') telegraphThreats(fut, steps, bx0, bx1, m);
+  if (boss && game.state === 'BOSS_FIGHT') {
+    if (boss.queue.length) queueThreats(fut, steps, bx0, bx1, m);
+    if (boss.plan) telegraphThreats(fut, steps, bx0, bx1, m);
+  }
   return fut;
 }
 
-// Was die Vorwarnung schon verrät (Bahnen, Lücke, Zahnradgröße), plant der Bot wie ein Mensch mit ein
+// Wand, die im Update k0 bei x0 startet und dort schon den ersten Schritt fliegt (wie fireAttack + updateShots)
+function wallThreat(fut, steps, bx0, bx1, m, k0, x0, vx, gy, drift, w) {
+  const half = CONFIG.WAVE_GAP / 2;
+  let x = x0, g = gy;
+  for (let k = k0; k <= steps; k++) {
+    x += vx; g += drift;
+    if (k >= 1 && x < bx1 && x + w > bx0) { (fut[k] || (fut[k] = [])).push([-100, g - half + m], [g + half - m, H + 100]); }
+  }
+}
+
+// Wartende Teile des laufenden Angriffs: q.wait ist das Update, in dem sie starten
+function queueThreats(fut, steps, bx0, bx1, m) {
+  for (const q of boss.queue) {
+    if (q.kind === 'wall') wallThreat(fut, steps, bx0, bx1, m, q.wait, bossXAt(q.wait) - 20, -waveSpeedNow(), q.gapY, 0, 30);
+    else if (q.kind === 'tick') fut.dyn.push({ k: q.wait, make: (mm, ty) => [tickGear(mm, ty, 0)] });
+  }
+}
+
+// Was die Vorwarnung schon verrät (Bahnen, Lücken, Takt), plant der Bot wie ein Mensch mit ein.
+// Der Angriff startet im Update delay.
 function telegraphThreats(fut, steps, bx0, bx1, m) {
   const add = (k, lo, hi) => { if (k >= 1 && k <= steps) (fut[k] || (fut[k] = [])).push([lo, hi]); };
-  const pat = currentPattern(), plan = boss.plan, delay = Math.max(0, attackCooldown() - boss.timer);
-  const mx = boss.x + CONFIG.BOSS_MOUTH_DX, S = shotSpeed(), ws = waveSpeedNow(), half = CONFIG.WAVE_GAP / 2;
-  const wallAt = (x0, vx, gy, drift, w) => {
-    let x = x0, g = gy;
-    for (let k = delay + 1; k <= steps; k++) {
-      x += vx; g += drift;
-      if (x < bx1 && x + w > bx0) { add(k, -100, g - half + m); add(k, g + half - m, H + 100); }
-    }
-  };
+  const pat = currentPattern(), plan = boss.plan, delay = Math.max(1, attackCooldown() - boss.timer);
+  const bxd = bossXAt(delay), mx = bxd + CONFIG.BOSS_MOUTH_DX, S = shotSpeed(), ws = waveSpeedNow();
+  const wallAt = (k0, x0, vx, gy, drift, w) => wallThreat(fut, steps, bx0, bx1, m, k0, x0, vx, gy, drift, w);
   if (pat === 'salvo3' && plan.lanes) {
     let x = mx;
-    for (let k = delay + 1; k <= steps; k++) {
+    for (let k = delay; k <= steps; k++) {
       x -= S;
       if (x + 13 > bx0 && x - 13 < bx1) for (const ly of plan.lanes) add(k, ly - 13 - m, ly + 13 + m);
     }
-  } else if (pat === 'wave' && plan.gapY !== undefined) wallAt(boss.x - 20, -ws, plan.gapY, 0, 30);
-  else if (pat === 'twinwave' && plan.gapR !== undefined) {
-    const x0 = boss.x - 20, tR = (x0 - (birdHomeX() + CONFIG.BIRD_W)) / ws;
-    wallAt(x0, -ws, plan.gapR, 0, 30);
-    wallAt(birdHomeX() - ws * (tR + TWIN_DELAY) - 30, ws, plan.gapL, 0, 30);
-  } else if (pat === 'emberrain' && plan.gapY !== undefined) wallAt(boss.x - 16, -rainSpeed(), plan.gapY, plan.drift || 0.6, 46);
-  else if (pat === 'gearroll' && plan.r) {
-    let x = boss.x + 30;
-    for (let k = delay + 1; k <= steps; k++) {
-      x -= S * 0.9;
-      if (x + plan.r > bx0 && x - plan.r < bx1) { if (plan.ceil) add(k, -100, 2 * plan.r + m); else add(k, GROUND_Y - 2 * plan.r - m, H + 100); }
-    }
-  }
+  } else if (pat === 'wave' && plan.gapY !== undefined) wallAt(delay, bxd - 20, -ws, plan.gapY, 0, 30);
+  else if (pat === 'twinwave' && plan.g1 !== undefined) {
+    wallAt(delay, bxd - 20, -ws, plan.g1, 0, 30);
+    wallAt(delay + twinDelay(), bossXAt(delay + twinDelay()) - 20, -ws, plan.g2, 0, 30);
+  } else if (pat === 'emberrain' && plan.gapY !== undefined) wallAt(delay, bxd - 16, -rainSpeed(), plan.gapY, plan.drift || 0.6, 46);
+  else if (pat === 'petal') fut.dyn.push({ k: delay, make: (mm, ty) => [petalOrb(mm, ty, plan.dir, 0)] });
+  else if (pat === 'zigzag') fut.dyn.push({ k: delay, make: (mm, ty) => [zigOrb(mm, ty, plan.dir, 0)] });
+  else if (pat === 'bounce') fut.dyn.push({ k: delay, make: (mm, ty) => [bounceOrb(mm, ty, 0)] });
+  else if (pat === 'converge') fut.dyn.push({ k: delay, make: (mm, ty) => convergeOrbs(mm, ty, 0) });
+  else if (pat === 'ticktock') for (let i = 0; i < 3; i++) fut.dyn.push({ k: delay + i * TICK.gap, make: (mm, ty) => [tickGear(mm, ty, 0)] });
 }
 
 // Bosskampf: Der Bot rechnet für eine Handvoll Zielhöhen voraus, wie sein eigener verzögerter
@@ -181,6 +197,11 @@ function simulateTarget(ystar, fut, steps) {
   const P = PHYS[game.level], D = AT.delay, half = CONFIG.BIRD_H / 2, hist = botMem.hist, f0 = botMem.f;
   let y = birdCY(), vy = bird.vy, lf = botMem.lastFlap, minClear = Infinity;
   const sim = [];
+  // Später startende, gezielte Geschosse: Boss wie in updateBossIdle mitrechnen (Maul beim Abschuss),
+  // Ziel ist die simulierte Höhe des Vogels im Abschuss-Update
+  const dyn = fut.dyn && fut.dyn.length ? fut.dyn : null, live = [], [bx0, bx1] = BOT_COL(), m = BOT_MARGIN;
+  let bt = boss ? boss.t : 0, byy = boss ? boss.y : 0, bxx = boss ? boss.x : 0;
+  const home = bossHomeX();
   for (let k = 0; k < steps; k++) {
     const fk = f0 + k;
     sim.push({ f: fk, y, vy, target: ystar });
@@ -197,8 +218,43 @@ function simulateTarget(ystar, fut, steps) {
       if (y > a && y < b) return { hit: k + 1, clear: -1 };
       minClear = Math.min(minClear, y <= a ? a - y : y - b);
     }
+    if (dyn) {
+      bt++;
+      const tg = clamp(y - CONFIG.BOSS_MOUTH_DY + Math.sin(bt * 0.025 + boss.seed) * 46, CONFIG.BOSS_Y_MIN, CONFIG.BOSS_Y_MAX);
+      byy += clamp((tg - byy) * 0.035, -CONFIG.BOSS_Y_SPEED, CONFIG.BOSS_Y_SPEED);
+      bxx += (home - bxx) * 0.1;
+      for (const d of dyn) if (d.k === k + 1) for (const s of d.make({ x: bxx + CONFIG.BOSS_MOUTH_DX, y: byy + CONFIG.BOSS_MOUTH_DY }, y)) live.push(orbClone(s));
+      for (let i = live.length - 1; i >= 0; i--) {
+        const p = live[i];
+        p.t++;
+        orbMove(p);
+        if (orbGone(p)) { live.splice(i, 1); continue; }
+        if (p.x + p.r > bx0 && p.x - p.r < bx1) {
+          const a = p.y - p.r - m, b = p.y + p.r + m;
+          if (y > a && y < b) return { hit: k + 1, clear: -1 };
+          minClear = Math.min(minClear, y <= a ? a - y : y - b);
+        }
+      }
+    }
   }
   return { hit: -1, clear: minClear };
+}
+// Zusätzliche Zielhöhen: Mitten der freien Bereiche zwischen vorhergesagten Sperren (Lücken in Wänden
+// und Vorhängen), wie ein Mensch, der auf die Mitte einer Lücke zielt
+function gapTargets(fut, steps) {
+  const out = [], lo = 40, hi = GROUND_Y - 60;
+  for (let k = 2; k <= steps; k += 6) {
+    const iv = fut[k];
+    if (!iv || iv.length < 2) continue;
+    const s = iv.map(a => [Math.max(lo, a[0]), Math.min(hi, a[1])]).filter(a => a[1] > a[0]).sort((a, b) => a[0] - b[0]);
+    let top = lo;
+    for (const [a, b] of s) {
+      if (a - top > 30) { const c = Math.round((a + top) / 2 / 4) * 4; if (!out.some(v => Math.abs(v - c) < 10)) out.push(c); }
+      top = Math.max(top, b);
+    }
+    if (out.length >= 8) break;
+  }
+  return out;
 }
 function bossTarget(cur) {
   // sofort neu planen, sobald ein Angriff hinzukommt oder sich aufteilt
@@ -207,9 +263,9 @@ function bossTarget(cur) {
   if (--botMem.next > 0) return botMem.target;
   botMem.next = 4;
   const steps = 130, fut = predictThreats(steps);
-  if (!fut.some(Boolean)) { botMem.target = clamp(lerp(cur, 270, 0.3), 110, 400); return botMem.target; }
+  if (!fut.some(Boolean) && !fut.dyn.length) { botMem.target = clamp(lerp(cur, 270, 0.3), 110, 400); return botMem.target; }
   let best = botMem.target, bestScore = -Infinity;
-  for (const y of BOT_TARGETS.concat([botMem.target])) {
+  for (const y of BOT_TARGETS.concat([botMem.target], gapTargets(fut, steps))) {
     const r = simulateTarget(y, fut, steps);
     const sc = r.hit < 0 ? 100000 + Math.min(r.clear, 70) * 10 - Math.abs(y - botMem.target) * 0.5 : r.hit * 10;
     if (sc > bestScore) { bestScore = sc; best = y; }

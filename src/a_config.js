@@ -130,7 +130,7 @@ let RNG = Math.random;
 // Angriffsmuster der Bosse. warn = sichtbare Vorwarnung in Frames.
 const PATTERNS = {
   aimed:     { warn: CONFIG.TELEGRAPH_FRAMES, label: 'Gezielter Schuss' },
-  salvo3:    { warn: CONFIG.TELEGRAPH_FRAMES, label: 'Dreiersalve: knapp zwischen die Bahnen oder weit vorbei' },
+  salvo3:    { warn: CONFIG.TELEGRAPH_FRAMES, label: 'Dreiersalve: dazwischen oder weit vorbei' },
   arc:       { warn: CONFIG.TELEGRAPH_FRAMES, label: 'Bogenwurf' },
   diverge:   { warn: CONFIG.TELEGRAPH_FRAMES, label: 'Zwei Schüsse, einer schert aus' },
   wave:      { warn: CONFIG.TELEGRAPH_FRAMES, label: 'Langsame Welle mit Lücke' },
@@ -138,17 +138,16 @@ const PATTERNS = {
   column:    { warn: CONFIG.TELEGRAPH_LONG, active: 20, label: 'Blitzsäule an deiner Position' },
   split:     { warn: CONFIG.TELEGRAPH_FRAMES, label: 'Brocken, der in drei Teile zerfällt' },
   laser:     { warn: CONFIG.TELEGRAPH_LONG, active: 12, label: 'Laser mit Ziellinie' },
-  spiral:    { warn: CONFIG.TELEGRAPH_FRAMES, label: 'Rotierender Ring: ruhig bleiben oder weit ausweichen' },
+  spiral:    { warn: CONFIG.TELEGRAPH_FRAMES, label: 'Rotierender Ring: Mitte oder weit weg' },
   shatter:   { warn: CONFIG.TELEGRAPH_FRAMES, label: 'Geschoss, das in der Mitte zersplittert' },
-  twinwave:  { warn: CONFIG.TELEGRAPH_FRAMES, label: 'Zwei Wellen aus beiden Richtungen' },
-  gearroll:  { warn: CONFIG.TELEGRAPH_LONG, label: 'Zahnrad rollt am Boden oder an der Decke' },
+  twinwave:  { warn: CONFIG.TELEGRAPH_FRAMES + 10, label: 'Zwei Wellen: erst Lücke 1, dann Lücke 2' },
   emberrain: { warn: CONFIG.TELEGRAPH_FRAMES, label: 'Glutregen mit sicherer Spalte' },
   alternate: { warn: CONFIG.TELEGRAPH_FRAMES, label: 'Gezielter Schuss und Welle im Wechsel' },
   petal:     { warn: CONFIG.TELEGRAPH_FRAMES + 6, label: 'Langsames Blütenblatt, schwebt leicht' },
-  bounce:    { warn: CONFIG.TELEGRAPH_FRAMES, label: 'Muschel prallt einmal am Wasser ab' },
+  bounce:    { warn: CONFIG.TELEGRAPH_FRAMES + 6, label: 'Muschel prallt ab, steigt auf deine Höhe' },
   zigzag:    { warn: CONFIG.TELEGRAPH_FRAMES, label: 'Blatt im Zickzack: weit ausweichen' },
-  converge:  { warn: CONFIG.TELEGRAPH_FRAMES, label: 'Zwei Steine treffen sich an deiner Stelle' },
-  ticktock:  { warn: CONFIG.TELEGRAPH_FRAMES, label: 'Tick, tack, tick: drei Zahnräder im Takt' }
+  converge:  { warn: CONFIG.TELEGRAPH_FRAMES, label: 'Zwei Steine kreuzen sich: hoch oder runter' },
+  ticktock:  { warn: CONFIG.TELEGRAPH_FRAMES, label: 'Drei Zahnräder im Takt, jedes zielt neu' }
 };
 
 // ============================================================
