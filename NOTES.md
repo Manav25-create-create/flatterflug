@@ -27,8 +27,13 @@ Live: https://manav25-create-create.github.io/flatterflug/ (GitHub Pages aus `ma
 - Grafik neuer Biome: `b_art8_bloom.js` (Blütenhain, Lagune), `b_art9_autumn.js` (Herbstwald, Ruinen),
   `b_art10_shadow.js` (Schattenreich). Muster dafür: `b_art2.js`, Kulissen-API in `b_scene.js`.
 
-## Speicher
-- Schlüssel `flatterflug-20-biome-v5`. Nie ändern ohne Übernahme des alten Stands.
+## Speicher (Spielstand muss jedes Update überstehen)
+- Dauerhafter Schlüssel `flatterflug-spielstand`, nie umbenennen. Sicherung des Vorstands in `flatterflug-spielstand-sicherung`.
+- Datensatz trägt `names`: Level werden nur über ihren Namen zugeordnet. Biom umbenannt: alten Namen in `LEVEL_ALIASES` (e_game.js).
+- Beim Schreiben wird der gespeicherte Stand eingemischt, Fortschritt wird nie kleiner (außer "Fortschritt löschen").
+- Unbekannte Level und Felder (z. B. aus einer neueren Fassung) bleiben im Datensatz erhalten.
+- Alte Schlüssel (`flatterflug-15-biome-v4`, v3, v2) werden nur gelesen und einmal übernommen, nie gelöscht.
+- Tests: `node test/t_save.mjs` (muss vor jedem Hochladen grün sein).
 - Auf derselben Domain laufen andere Projekte: nur Schlüssel mit Präfix `flatterflug` verwenden.
 
 ## Testen
@@ -37,4 +42,5 @@ Live: https://manav25-create-create.github.io/flatterflug/ (GitHub Pages aus `ma
 - Rohrlücken kalibrieren: `node test/h.mjs 800 600 test/calib.js` (Ziel 92 − 1,8·Index Prozent).
 - Vorschau eines Bioms: `node test/preview.mjs <Biom> <Breite> [x1,x2] [pipes] [boss]`.
 - Spielszene als Bild: `test/play_shot.js` (Bot unverwundbar, danach Screenshot über `SHOT=datei.png`).
+- Ablauf-Test: `node test/t_flow.mjs 800x600` und `node test/t_flow.mjs 390x844`.
 - Botwerte sind kein Beweis für menschliche Schwierigkeit.
