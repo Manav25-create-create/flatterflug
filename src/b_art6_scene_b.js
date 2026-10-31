@@ -335,10 +335,11 @@
   // Heimatplanet: Ozean, Kontinente mit Schelf und Küste, Polkappen, Wolkenzüge, Stadtlichter
   function paintHome(w, h, q, C, p) {
     const cx = w / 2, cy = h / 2, r = p.r, beta = 0.3, tilt = R(q, -0.3, 0.05);
-    const ocean = mix(mix('#2b5d9c', C.far, 0.3), C.skyBottom, 0.06), deep = shade(ocean, -0.24);
-    const shallow = mix(ocean, '#5ab4c2', 0.45), sand = mix(mix('#c9aa70', C.far, 0.2), C.accent, 0.08);
-    const green = mix(mix('#4d8a5a', C.far, 0.24), ocean, 0.04), forest = shade(green, -0.2), dry = mix(sand, green, 0.35);
-    const ice = mix(CREAM, C.pipe, 0.14), cloud = mix(CREAM, C.pipe, 0.08), atm = mix('#7cb0ff', C.pipe, 0.3);
+    // Fremder, kalter Planet statt einer freundlichen Erde (spätes Level, Stimmung soll bedrohlich sein)
+    const ocean = mix(mix('#33295e', C.far, 0.3), C.skyBottom, 0.06), deep = shade(ocean, -0.24);
+    const shallow = mix(ocean, '#7a62b8', 0.45), sand = mix(mix('#7d6470', C.far, 0.2), C.accent, 0.08);
+    const green = mix(mix('#4e4068', C.far, 0.24), ocean, 0.04), forest = shade(green, -0.2), dry = mix(sand, green, 0.35);
+    const ice = mix(CREAM, C.pipe, 0.14), cloud = mix(CREAM, C.pipe, 0.08), atm = mix('#a07cff', C.pipe, 0.3);
     const ct = Math.cos(tilt), st = Math.sin(tilt), cities = [];
     sphere(cx, cy, r, {
       base: ocean, night: spaceNight(C), atm, halo: 0.17, haloA: 0.32, limbA: 0.55, rim: mix(atm, CREAM, 0.5), rimA: 0.55, back: 0.16,
