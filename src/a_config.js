@@ -281,14 +281,14 @@ const LEVELS = [
   },
   {
     name: 'Wüste', pipeGap: 185,
-    palette: { skyTop: '#6aa0cf', skyBottom: '#f4d8a2', far: '#e3b87c', near: '#c98c4b', pipe: '#d5a167', accent: '#df673d' },
+    palette: { skyTop: '#8aa0b2', skyBottom: '#efc58c', far: '#e3b87c', near: '#c98c4b', pipe: '#d5a167', accent: '#df673d' },
     physicsOverride: {},
     boss: { pattern: 'wave', name: 'Sandskarabäus' },
     music: { scale: 'phrygDom', root: 52, bpm: 96, waves: { lead: 'sawtooth', bass: 'triangle', pad: 'sawtooth' }, filter: 1500, filterQ: 6, delayFb: 0.3, reverb: 0.3, perc: 'frame', feel: 'narrow', swing: 0.1, seed: 505 },
     skinId: 5,
     ambient: 'dust',
     style: { boss: 'scarab', pipe: 'sandstone', ground: 'sand', projectile: 'sand', pipeNoun: 'Sandsteinsäule' },
-    sky: { body: 'sun', sunX: 0.72, sunY: 128, big: true, haze: true },
+    sky: { body: 'sun', sunX: 0.72, sunY: 128, big: true, haze: true, pale: true },
     layers: [
       { kind: 'dunes', P: 1000, base: 446, amp: 64, freq: 0.003, seed: 51, haze: 0.34 },
       { kind: 'mesas', P: 1200, base: 492, amp: 136, spacing: 196, seed: 52 },
@@ -332,7 +332,7 @@ const LEVELS = [
   },
   {
     name: 'Kristall', pipeGap: 182,
-    palette: { skyTop: '#2c2a5c', skyBottom: '#9a8fd0', far: '#5d5ba3', near: '#36316c', pipe: '#8fd3df', accent: '#ef8fcf' },
+    palette: { skyTop: '#2c2a5c', skyBottom: '#7d72b2', far: '#5d5ba3', near: '#36316c', pipe: '#8fd3df', accent: '#c47fbf' },
     physicsOverride: {},
     boss: { pattern: 'shatter', name: 'Prismenwächter' },
     music: { scale: 'lydian', root: 64, bpm: 104, waves: { lead: 'sine', bass: 'triangle', pad: 'sine' }, filter: 7000, delayFb: 0.4, reverb: 0.5, perc: 'light', feel: 'bells', seed: 1111 },
@@ -400,7 +400,7 @@ const LEVELS = [
   },
   {
     name: 'Uhrwerk', pipeGap: 184,
-    palette: { skyTop: '#2e231f', skyBottom: '#7d5b3b', far: '#5b4331', near: '#382a20', pipe: '#c18f46', accent: '#d97a4a' },
+    palette: { skyTop: '#1f1715', skyBottom: '#5a3e2b', far: '#463328', near: '#382a20', pipe: '#c18f46', accent: '#e0663a' },
     physicsOverride: {},
     boss: { pattern: 'ticktock', name: 'Uhrwerkeule' },
     music: { scale: 'minor', root: 50, bpm: 118, waves: { lead: 'square', bass: 'triangle', pad: 'sawtooth' }, filter: 3000, delayFb: 0.2, reverb: 0.25, perc: 'clock', feel: 'clock', seed: 1313 },
