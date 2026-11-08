@@ -347,7 +347,7 @@ const LEVELS = [
     hint: 'Kristallsäulen in Bewegung und kräftiger Wind.'
   },
   {
-    name: 'Ruinen', pipeGap: 180,
+    name: 'Ruinen', pipeGap: 182,
     palette: { skyTop: '#3d4a5e', skyBottom: '#c99a6b', far: '#6b6a5c', near: '#3f4234', pipe: '#9a917a', accent: '#e0c060' },
     physicsOverride: {},
     boss: { pattern: 'converge', name: 'Steinwächter' },
@@ -361,7 +361,7 @@ const LEVELS = [
       { kind: 'trunks', P: 1200, spacing: 100, width: [10, 18], seed: 192 },
       { kind: 'props', P: 1400, prop: 'fern', spacing: 70, seed: 193 }
     ],
-    hint: 'Neu: Die Säulen schwanken nach links und rechts. Achte auf den Abstand zur nächsten.'
+    hint: 'Neu: Obere und untere Säule fahren seitlich gegeneinander. Die Lücke bleibt gleich hoch, aber der Durchgang wird schräg.'
   },
   {
     name: 'Höhle', pipeGap: 178,
@@ -378,10 +378,10 @@ const LEVELS = [
       { kind: 'spikes', P: 1200, amp: 160, spacing: 118, seed: 82, rock: true },
       { kind: 'spikes', P: 1400, amp: 66, spacing: 56, seed: 83, crystals: true }
     ],
-    hint: 'Seitlich und auf und ab: Die Felssäulen bewegen sich in alle Richtungen.'
+    hint: 'Schiebende und auf und ab fahrende Felssäulen kommen jetzt zusammen.'
   },
   {
-    name: 'Sturm', pipeGap: 182,
+    name: 'Sturm', pipeGap: 195,
     palette: { skyTop: '#2b293d', skyBottom: '#6d628b', far: '#474061', near: '#2d2a3f', pipe: '#5e5476', accent: '#dbcaff' },
     physicsOverride: {},
     boss: { pattern: 'laser', name: 'Gewitterkoloss' },
@@ -395,10 +395,10 @@ const LEVELS = [
       { kind: 'hang', P: 1200, base: 70, amp: 58, freq: 0.01, seed: 72, clouds: true },
       { kind: 'props', P: 1400, prop: 'windgrass', spacing: 30, seed: 73 }
     ],
-    hint: 'Neu bei den dunklen Kugeln: Bleiflügel machen dich schwerer. Dazu Sturm und Bewegung.'
+    hint: 'Neu: Manche Lücken ziehen sich langsam zusammen und öffnen sich wieder. Dazu Sturm, Bleiflügel-Kugeln und Bewegung.'
   },
   {
-    name: 'Uhrwerk', pipeGap: 184,
+    name: 'Uhrwerk', pipeGap: 196,
     palette: { skyTop: '#1f1715', skyBottom: '#5a3e2b', far: '#463328', near: '#382a20', pipe: '#c18f46', accent: '#e0663a' },
     physicsOverride: {},
     boss: { pattern: 'ticktock', name: 'Uhrwerkeule' },
@@ -412,7 +412,7 @@ const LEVELS = [
       { kind: 'station', P: 1200, seed: 132 },
       { kind: 'spikes', P: 1400, amp: 50, spacing: 60, seed: 133, rock: true }
     ],
-    hint: 'Die Rohre springen im Takt, dazu Wind und seitliches Schwanken.'
+    hint: 'Die Rohre springen im Takt, schieben sich gegeneinander, dazu Wind und atmende Lücken.'
   },
   {
     name: 'Neon', pipeGap: 180,
@@ -432,7 +432,7 @@ const LEVELS = [
     hint: 'Neu: Die Neontürme kippen leicht zur Seite. Die Lücke liegt dann schräg.'
   },
   {
-    name: 'Weltraum', pipeGap: 168,
+    name: 'Weltraum', pipeGap: 181,
     palette: { skyTop: '#0c0f24', skyBottom: '#2b1d48', far: '#3c2b61', near: '#1c2241', pipe: '#8f9bb9', accent: '#f0b35b' },
     physicsOverride: { GRAVITY: 0.30, FLAP_IMPULSE: -6.5 },
     boss: { pattern: 'alternate', name: 'Nebelqualle' },
@@ -446,10 +446,10 @@ const LEVELS = [
       { kind: 'stars', P: 1200, cell: 44, chance: 0.45, size: [1.0, 2.0], seed: 152, dust: true },
       { kind: 'station', P: 1400, seed: 153 }
     ],
-    hint: 'Kaum Schwerkraft, dazu kippende und treibende Module.'
+    hint: 'Kaum Schwerkraft, dazu kippende, schiebende und atmende Module.'
   },
   {
-    name: 'Asche', pipeGap: 182,
+    name: 'Asche', pipeGap: 195,
     palette: { skyTop: '#1e1716', skyBottom: '#5e2d20', far: '#3b2a2a', near: '#211a1a', pipe: '#433836', accent: '#f08a3c' },
     physicsOverride: {},
     boss: { pattern: 'emberrain', name: 'Aschephönix' },
@@ -463,10 +463,10 @@ const LEVELS = [
       { kind: 'trunks', P: 1200, spacing: 110, width: [8, 16], seed: 142 },
       { kind: 'spikes', P: 1400, amp: 40, spacing: 50, seed: 143, cracks: true }
     ],
-    hint: 'Kippen, Schwanken, Wind: Hier kommt alles zusammen.'
+    hint: 'Kippen, Schieben, Zusammenziehen, Wind: Hier kommt alles zusammen.'
   },
   {
-    name: 'Lava', pipeGap: 183,
+    name: 'Lava', pipeGap: 200,
     palette: { skyTop: '#2a1419', skyBottom: '#86331f', far: '#4d2320', near: '#2c1918', pipe: '#5a3026', accent: '#ef763b' },
     physicsOverride: {},
     boss: { pattern: 'twinwave', name: 'Magmageist' },
@@ -483,7 +483,7 @@ const LEVELS = [
     hint: 'Der letzte Einzelgegner wartet. Alles bewegt sich, schnell und weit.'
   },
   {
-    name: 'Schattenreich', pipeGap: 184,
+    name: 'Schattenreich', pipeGap: 192,
     palette: { skyTop: '#0b0812', skyBottom: '#2a1636', far: '#1d1226', near: '#120b18', pipe: '#3a2a46', accent: '#b06cff' },
     physicsOverride: {},
     boss: { pattern: 'aimed', name: 'Bossansturm' },
@@ -503,9 +503,11 @@ const LEVELS = [
 // ============================================================
 // Hindernisplan: alle vier Level etwas Neues, das in seinem ersten Level allein
 // auftritt und danach mit dem Bisherigen kombiniert wird.
-//   ab 4: auf und ab, ab 8: Wind (schneller/langsamer), ab 12: seitlich,
-//   ab 16: kippend, ab 20: Dunkelheit.
-// vert/side: [Anteil, Ausschlag px, Periode Frames, Art], tilt: [Anteil, Winkel rad, Periode]
+//   ab 4: auf und ab, ab 8: Wind (schneller/langsamer), ab 12: Schieben (oberes und unteres
+//   Rohr fahren seitlich gegeneinander), ab 16: kippend, ab 20: Dunkelheit.
+//   Zusätzlich ab 14 einzelne Lücken, die sich langsam zusammenziehen und wieder öffnen (nie unter 140 px).
+// vert/side: [Anteil, Ausschlag px, Periode Frames, Art], tilt: [Anteil, Winkel rad, Periode],
+// shrink: [Anteil, Verkleinerung px, Periode]
 // wind: Böe alle every Frames, dur lang, lead vorher angekündigt; tail/head = Tempofaktor
 // ============================================================
 const W8 = (every, tail, head) => ({ every, dur: 120, lead: 60, tail, head });
@@ -519,15 +521,15 @@ const MECH_PLAN = [
   { vert: [0.45, 32, 225], wind: W8(285, 1.3, 0.75) },
   { vert: [0.5, 34, 215], wind: W8(270, 1.33, 0.73) },
   { vert: [0.55, 36, 205], wind: W8(260, 1.35, 0.72) },
-  { side: [0.45, 18, 210] },
-  { vert: [0.45, 32, 215], side: [0.4, 18, 205] },
-  { vert: [0.5, 34, 205], side: [0.4, 20, 200], wind: W8(260, 1.35, 0.72) },
-  { vert: [0.55, 30, 260, 'step'], side: [0.45, 20, 195], wind: W8(250, 1.35, 0.72) },
+  { side: [0.45, 24, 220] },
+  { vert: [0.45, 32, 215], side: [0.4, 24, 215] },
+  { vert: [0.5, 34, 205], side: [0.4, 26, 210], wind: W8(260, 1.35, 0.72), shrink: [0.3, 30, 240] },
+  { vert: [0.55, 30, 260, 'step'], side: [0.45, 26, 205], wind: W8(250, 1.35, 0.72), shrink: [0.3, 32, 230] },
   { tilt: [0.5, 0.15, 260] },
-  { vert: [0.45, 34, 205], side: [0.35, 20, 195], tilt: [0.4, 0.14, 250] },
-  { vert: [0.5, 36, 200], side: [0.4, 22, 190], tilt: [0.45, 0.15, 240], wind: W8(250, 1.35, 0.72) },
-  { vert: [0.6, 38, 190], side: [0.45, 24, 185], tilt: [0.5, 0.16, 230], wind: W8(240, 1.37, 0.7) },
-  { vert: [0.5, 34, 205], side: [0.4, 20, 195], tilt: [0.4, 0.14, 250], wind: W8(270, 1.33, 0.73), dark: { sight: 240 } }
+  { vert: [0.45, 34, 205], side: [0.35, 26, 205], tilt: [0.4, 0.14, 250], shrink: [0.35, 32, 230] },
+  { vert: [0.5, 36, 200], side: [0.4, 28, 200], tilt: [0.45, 0.15, 240], wind: W8(250, 1.35, 0.72), shrink: [0.4, 34, 220] },
+  { vert: [0.6, 38, 190], side: [0.45, 28, 195], tilt: [0.5, 0.16, 230], wind: W8(240, 1.37, 0.7), shrink: [0.45, 36, 210] },
+  { vert: [0.5, 34, 205], side: [0.4, 26, 205], tilt: [0.4, 0.14, 250], wind: W8(270, 1.33, 0.73), shrink: [0.35, 32, 230], dark: { sight: 240 } }
 ];
 // Level, in denen ein neues Hindernis dazukommt (Index): dort bekommt der Boss kein zusätzliches Leben
 const NEW_MECH_LEVELS = new Set([0, 3, 7, 11, 15, 19]);
@@ -537,6 +539,7 @@ LEVELS.forEach((L, i) => {
   L.movingPipes = v ? { share: v[0], amplitude: v[1], period: v[2], motion: v[3] || 'sine' } : { share: 0, amplitude: 0, period: 1, motion: 'sine' };
   L.sidePipes = sd ? { share: sd[0], amplitude: sd[1], period: sd[2] } : { share: 0, amplitude: 0, period: 1 };
   L.tiltPipes = tl ? { share: tl[0], angle: tl[1], period: tl[2] } : { share: 0, angle: 0, period: 1 };
+  L.shrinkPipes = M.shrink ? { share: M.shrink[0], amount: M.shrink[1], period: M.shrink[2] } : { share: 0, amount: 0, period: 1 };
   L.wind = M.wind || null;
   L.dark = M.dark || null;
   L.hazard = M.dark ? { type: 'darkness', params: { sight: M.dark.sight } } : { type: 'none', params: {} };

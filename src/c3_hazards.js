@@ -906,9 +906,10 @@ function drawDarkness(a, strength) {
     ctx.save();
     if (ang) { const px = x + PW_ / 2, py = gy + p.gap / 2; ctx.translate(px, py); ctx.rotate(ang); ctx.translate(-px, -py); }
     const ext = ang ? 60 : 0;
+    const o = pipeOxa(p, a);
     ctx.beginPath();
-    ctx.moveTo(x, -ext); ctx.lineTo(x, gy); ctx.lineTo(x + PW_, gy); ctx.lineTo(x + PW_, -ext);
-    ctx.moveTo(x, GROUND_Y + ext); ctx.lineTo(x, gy + p.gap); ctx.lineTo(x + PW_, gy + p.gap); ctx.lineTo(x + PW_, GROUND_Y + ext);
+    ctx.moveTo(x + o, -ext); ctx.lineTo(x + o, gy); ctx.lineTo(x + o + PW_, gy); ctx.lineTo(x + o + PW_, -ext);
+    ctx.moveTo(x - o, GROUND_Y + ext); ctx.lineTo(x - o, gy + p.gap); ctx.lineTo(x - o + PW_, gy + p.gap); ctx.lineTo(x - o + PW_, GROUND_Y + ext);
     ctx.stroke();
     ctx.restore();
   }

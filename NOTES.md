@@ -12,8 +12,10 @@ Live: https://manav25-create-create.github.io/flatterflug/ (GitHub Pages aus `ma
 
 ## Wichtige Stellen
 - `a_config.js`: CONFIG, PATTERNS (Boss-Angriffe), LEVELS (20 Biome), MECH_PLAN (Hindernisse je Level), BOSS_LIVES.
-  - Hindernisse: ab Level 4 auf und ab, ab 8 Wind (Rückenwind schneller, Gegenwind langsamer), ab 12 seitlich,
-    ab 16 kippend, ab 20 Dunkelheit. Im Einführungslevel allein, danach kombiniert.
+  - Hindernisse: ab Level 4 auf und ab, ab 8 Wind (Rückenwind schneller, Gegenwind langsamer), ab 12 Schieben
+    (oberes und unteres Rohr fahren seitlich gegeneinander), ab 16 kippend, ab 20 Dunkelheit. Im Einführungslevel
+    allein, danach kombiniert. Ab 14 zusätzlich Lücken, die sich zusammenziehen (nie unter 140 px).
+  - Passwort "Bot": alle Level frei; Bot-Spule danach in der Pause ("Startpunkt spulen").
   - Rohre: 10 + 2·(n−1), Level 20: 50. Boss-Leben: Level 1 = 1, +1 in jedem Level ohne neues Hindernis.
   - Level 20 ist der Ansturm der 19 Bosse (je 2 Treffer), Checkpoints nach Boss 7 und 13 (nicht auf Schwer).
 - `c_world.js`: Vogel und Rohre. Alle Rohre eines Versuchs stehen im Layout (`makeLayout`, Seed).

@@ -455,7 +455,7 @@ const LEVELS = [
     hint: 'Kristallsäulen in Bewegung und kräftiger Wind.'
   },
   {
-    name: 'Ruinen', pipeGap: 180,
+    name: 'Ruinen', pipeGap: 182,
     palette: { skyTop: '#3d4a5e', skyBottom: '#c99a6b', far: '#6b6a5c', near: '#3f4234', pipe: '#9a917a', accent: '#e0c060' },
     physicsOverride: {},
     boss: { pattern: 'converge', name: 'Steinwächter' },
@@ -469,7 +469,7 @@ const LEVELS = [
       { kind: 'trunks', P: 1200, spacing: 100, width: [10, 18], seed: 192 },
       { kind: 'props', P: 1400, prop: 'fern', spacing: 70, seed: 193 }
     ],
-    hint: 'Neu: Die Säulen schwanken nach links und rechts. Achte auf den Abstand zur nächsten.'
+    hint: 'Neu: Obere und untere Säule fahren seitlich gegeneinander. Die Lücke bleibt gleich hoch, aber der Durchgang wird schräg.'
   },
   {
     name: 'Höhle', pipeGap: 178,
@@ -486,10 +486,10 @@ const LEVELS = [
       { kind: 'spikes', P: 1200, amp: 160, spacing: 118, seed: 82, rock: true },
       { kind: 'spikes', P: 1400, amp: 66, spacing: 56, seed: 83, crystals: true }
     ],
-    hint: 'Seitlich und auf und ab: Die Felssäulen bewegen sich in alle Richtungen.'
+    hint: 'Schiebende und auf und ab fahrende Felssäulen kommen jetzt zusammen.'
   },
   {
-    name: 'Sturm', pipeGap: 182,
+    name: 'Sturm', pipeGap: 195,
     palette: { skyTop: '#2b293d', skyBottom: '#6d628b', far: '#474061', near: '#2d2a3f', pipe: '#5e5476', accent: '#dbcaff' },
     physicsOverride: {},
     boss: { pattern: 'laser', name: 'Gewitterkoloss' },
@@ -503,10 +503,10 @@ const LEVELS = [
       { kind: 'hang', P: 1200, base: 70, amp: 58, freq: 0.01, seed: 72, clouds: true },
       { kind: 'props', P: 1400, prop: 'windgrass', spacing: 30, seed: 73 }
     ],
-    hint: 'Neu bei den dunklen Kugeln: Bleiflügel machen dich schwerer. Dazu Sturm und Bewegung.'
+    hint: 'Neu: Manche Lücken ziehen sich langsam zusammen und öffnen sich wieder. Dazu Sturm, Bleiflügel-Kugeln und Bewegung.'
   },
   {
-    name: 'Uhrwerk', pipeGap: 184,
+    name: 'Uhrwerk', pipeGap: 196,
     palette: { skyTop: '#1f1715', skyBottom: '#5a3e2b', far: '#463328', near: '#382a20', pipe: '#c18f46', accent: '#e0663a' },
     physicsOverride: {},
     boss: { pattern: 'ticktock', name: 'Uhrwerkeule' },
@@ -520,7 +520,7 @@ const LEVELS = [
       { kind: 'station', P: 1200, seed: 132 },
       { kind: 'spikes', P: 1400, amp: 50, spacing: 60, seed: 133, rock: true }
     ],
-    hint: 'Die Rohre springen im Takt, dazu Wind und seitliches Schwanken.'
+    hint: 'Die Rohre springen im Takt, schieben sich gegeneinander, dazu Wind und atmende Lücken.'
   },
   {
     name: 'Neon', pipeGap: 180,
@@ -540,7 +540,7 @@ const LEVELS = [
     hint: 'Neu: Die Neontürme kippen leicht zur Seite. Die Lücke liegt dann schräg.'
   },
   {
-    name: 'Weltraum', pipeGap: 168,
+    name: 'Weltraum', pipeGap: 181,
     palette: { skyTop: '#0c0f24', skyBottom: '#2b1d48', far: '#3c2b61', near: '#1c2241', pipe: '#8f9bb9', accent: '#f0b35b' },
     physicsOverride: { GRAVITY: 0.30, FLAP_IMPULSE: -6.5 },
     boss: { pattern: 'alternate', name: 'Nebelqualle' },
@@ -554,10 +554,10 @@ const LEVELS = [
       { kind: 'stars', P: 1200, cell: 44, chance: 0.45, size: [1.0, 2.0], seed: 152, dust: true },
       { kind: 'station', P: 1400, seed: 153 }
     ],
-    hint: 'Kaum Schwerkraft, dazu kippende und treibende Module.'
+    hint: 'Kaum Schwerkraft, dazu kippende, schiebende und atmende Module.'
   },
   {
-    name: 'Asche', pipeGap: 182,
+    name: 'Asche', pipeGap: 195,
     palette: { skyTop: '#1e1716', skyBottom: '#5e2d20', far: '#3b2a2a', near: '#211a1a', pipe: '#433836', accent: '#f08a3c' },
     physicsOverride: {},
     boss: { pattern: 'emberrain', name: 'Aschephönix' },
@@ -571,10 +571,10 @@ const LEVELS = [
       { kind: 'trunks', P: 1200, spacing: 110, width: [8, 16], seed: 142 },
       { kind: 'spikes', P: 1400, amp: 40, spacing: 50, seed: 143, cracks: true }
     ],
-    hint: 'Kippen, Schwanken, Wind: Hier kommt alles zusammen.'
+    hint: 'Kippen, Schieben, Zusammenziehen, Wind: Hier kommt alles zusammen.'
   },
   {
-    name: 'Lava', pipeGap: 183,
+    name: 'Lava', pipeGap: 200,
     palette: { skyTop: '#2a1419', skyBottom: '#86331f', far: '#4d2320', near: '#2c1918', pipe: '#5a3026', accent: '#ef763b' },
     physicsOverride: {},
     boss: { pattern: 'twinwave', name: 'Magmageist' },
@@ -591,7 +591,7 @@ const LEVELS = [
     hint: 'Der letzte Einzelgegner wartet. Alles bewegt sich, schnell und weit.'
   },
   {
-    name: 'Schattenreich', pipeGap: 184,
+    name: 'Schattenreich', pipeGap: 192,
     palette: { skyTop: '#0b0812', skyBottom: '#2a1636', far: '#1d1226', near: '#120b18', pipe: '#3a2a46', accent: '#b06cff' },
     physicsOverride: {},
     boss: { pattern: 'aimed', name: 'Bossansturm' },
@@ -611,9 +611,11 @@ const LEVELS = [
 // ============================================================
 // Hindernisplan: alle vier Level etwas Neues, das in seinem ersten Level allein
 // auftritt und danach mit dem Bisherigen kombiniert wird.
-//   ab 4: auf und ab, ab 8: Wind (schneller/langsamer), ab 12: seitlich,
-//   ab 16: kippend, ab 20: Dunkelheit.
-// vert/side: [Anteil, Ausschlag px, Periode Frames, Art], tilt: [Anteil, Winkel rad, Periode]
+//   ab 4: auf und ab, ab 8: Wind (schneller/langsamer), ab 12: Schieben (oberes und unteres
+//   Rohr fahren seitlich gegeneinander), ab 16: kippend, ab 20: Dunkelheit.
+//   Zusätzlich ab 14 einzelne Lücken, die sich langsam zusammenziehen und wieder öffnen (nie unter 140 px).
+// vert/side: [Anteil, Ausschlag px, Periode Frames, Art], tilt: [Anteil, Winkel rad, Periode],
+// shrink: [Anteil, Verkleinerung px, Periode]
 // wind: Böe alle every Frames, dur lang, lead vorher angekündigt; tail/head = Tempofaktor
 // ============================================================
 const W8 = (every, tail, head) => ({ every, dur: 120, lead: 60, tail, head });
@@ -627,15 +629,15 @@ const MECH_PLAN = [
   { vert: [0.45, 32, 225], wind: W8(285, 1.3, 0.75) },
   { vert: [0.5, 34, 215], wind: W8(270, 1.33, 0.73) },
   { vert: [0.55, 36, 205], wind: W8(260, 1.35, 0.72) },
-  { side: [0.45, 18, 210] },
-  { vert: [0.45, 32, 215], side: [0.4, 18, 205] },
-  { vert: [0.5, 34, 205], side: [0.4, 20, 200], wind: W8(260, 1.35, 0.72) },
-  { vert: [0.55, 30, 260, 'step'], side: [0.45, 20, 195], wind: W8(250, 1.35, 0.72) },
+  { side: [0.45, 24, 220] },
+  { vert: [0.45, 32, 215], side: [0.4, 24, 215] },
+  { vert: [0.5, 34, 205], side: [0.4, 26, 210], wind: W8(260, 1.35, 0.72), shrink: [0.3, 30, 240] },
+  { vert: [0.55, 30, 260, 'step'], side: [0.45, 26, 205], wind: W8(250, 1.35, 0.72), shrink: [0.3, 32, 230] },
   { tilt: [0.5, 0.15, 260] },
-  { vert: [0.45, 34, 205], side: [0.35, 20, 195], tilt: [0.4, 0.14, 250] },
-  { vert: [0.5, 36, 200], side: [0.4, 22, 190], tilt: [0.45, 0.15, 240], wind: W8(250, 1.35, 0.72) },
-  { vert: [0.6, 38, 190], side: [0.45, 24, 185], tilt: [0.5, 0.16, 230], wind: W8(240, 1.37, 0.7) },
-  { vert: [0.5, 34, 205], side: [0.4, 20, 195], tilt: [0.4, 0.14, 250], wind: W8(270, 1.33, 0.73), dark: { sight: 240 } }
+  { vert: [0.45, 34, 205], side: [0.35, 26, 205], tilt: [0.4, 0.14, 250], shrink: [0.35, 32, 230] },
+  { vert: [0.5, 36, 200], side: [0.4, 28, 200], tilt: [0.45, 0.15, 240], wind: W8(250, 1.35, 0.72), shrink: [0.4, 34, 220] },
+  { vert: [0.6, 38, 190], side: [0.45, 28, 195], tilt: [0.5, 0.16, 230], wind: W8(240, 1.37, 0.7), shrink: [0.45, 36, 210] },
+  { vert: [0.5, 34, 205], side: [0.4, 26, 205], tilt: [0.4, 0.14, 250], wind: W8(270, 1.33, 0.73), shrink: [0.35, 32, 230], dark: { sight: 240 } }
 ];
 // Level, in denen ein neues Hindernis dazukommt (Index): dort bekommt der Boss kein zusätzliches Leben
 const NEW_MECH_LEVELS = new Set([0, 3, 7, 11, 15, 19]);
@@ -645,6 +647,7 @@ LEVELS.forEach((L, i) => {
   L.movingPipes = v ? { share: v[0], amplitude: v[1], period: v[2], motion: v[3] || 'sine' } : { share: 0, amplitude: 0, period: 1, motion: 'sine' };
   L.sidePipes = sd ? { share: sd[0], amplitude: sd[1], period: sd[2] } : { share: 0, amplitude: 0, period: 1 };
   L.tiltPipes = tl ? { share: tl[0], angle: tl[1], period: tl[2] } : { share: 0, angle: 0, period: 1 };
+  L.shrinkPipes = M.shrink ? { share: M.shrink[0], amount: M.shrink[1], period: M.shrink[2] } : { share: 0, amount: 0, period: 1 };
   L.wind = M.wind || null;
   L.dark = M.dark || null;
   L.hazard = M.dark ? { type: 'darkness', params: { sight: M.dark.sight } } : { type: 'none', params: {} };
@@ -21523,9 +21526,10 @@ function wingPhase() {
 
 // ============================================================
 // Rohre: generische Objekte mit type 'pipe'. Bewegte Paare fahren
-// gemeinsam auf und ab (movingPipes), schwanken nach links und rechts
-// (sidePipes) und/oder kippen um die Lückenmitte (tiltPipes); die Lücke
-// bleibt immer gleich groß.
+// gemeinsam auf und ab (movingPipes), oberes und unteres Rohr schieben sich
+// seitlich gegeneinander (sidePipes: oben nach rechts, unten nach links und
+// zurück), kippen um die Lückenmitte (tiltPipes) oder die Lücke zieht sich
+// langsam zusammen und geht wieder auf (shrinkPipes, nie unter 140 px).
 // Bewegungsarten: 'sine' (gleichmäßig) und 'step' (Uhrwerk: halten, dann zügig umsetzen).
 // Alle Rohre eines Versuchs stehen vorab im Layout (aus einem Seed). Dadurch
 // sieht ein Neustart am Checkpoint genauso aus wie der Lauf davor, inklusive
@@ -21545,7 +21549,7 @@ function pipeGapAt(p, wt) {
   const u = p.phase + TAU * wt / p.period;
   return p.gy0 + p.amp * (p.motion === 'step' ? stepWave(u) : Math.sin(u));
 }
-// Seitlicher Versatz (Weltkoordinaten) zum Zeitpunkt wt
+// Seitlicher Versatz zum Zeitpunkt wt: oberes Rohr +ox, unteres -ox (Weltkoordinaten)
 function pipeOffsetAt(p, wt) {
   return p.hamp ? p.hamp * Math.sin(p.hphase + TAU * wt / p.hperiod) : 0;
 }
@@ -21553,16 +21557,22 @@ function pipeOffsetAt(p, wt) {
 function pipeAngleAt(p, wt) {
   return p.tamp ? p.tamp * Math.sin(p.tphase + TAU * wt / p.tperiod) : 0;
 }
+// Lückengröße zum Zeitpunkt wt (Zusammenziehen: weich auf gap0 - gamp und zurück)
+function pipeGapSizeAt(p, wt) {
+  return p.gamp ? p.gap0 - p.gamp * (0.5 - 0.5 * Math.cos(p.gphase + TAU * wt / p.gperiod)) : p.gap0;
+}
 const pipeCenter = p => p.gapY + p.gap / 2;
-const pipeX = p => p.slot + p.ox;                       // linke Kante in Weltkoordinaten, aktuell
-const pipeXa = (p, a) => p.slot + lerp(p.pox, p.ox, a);  // interpoliert zum Zeichnen
+const pipeX = p => p.slot;                              // Bezugskante (Mitte des Paars minus halbe Breite), Weltkoordinaten
+const pipeXa = (p, a) => p.slot;
+const pipeReach = p => p.slot + Math.abs(p.ox) + PW_;  // rechteste Kante beider Rohre
+const pipeOxa = (p, a) => lerp(p.pox, p.ox, a);
 // Lückenmitte an der Weltkoordinate wx (bei gekippten Paaren liegt die Lücke schräg)
 const pipeCenterAtX = (p, wx) => pipeCenter(p) + (p.ang ? (wx - (pipeX(p) + PW_ / 2)) * Math.tan(p.ang) : 0);
 
 // Layout eines Versuchs: Höhe, Bewegung und Variante jedes Rohrs, aus dem Seed
 const TILT_SHIFT = (PW_ / 2 + CONFIG.BIRD_W) * 0.17;   // so weit wandert die Lückenmitte am Vogel bei voller Neigung
 function makeLayout(li, seed) {
-  const L = LEVELS[li], n = pipesFor(li), gap = L.pipeGap, mp = L.movingPipes, sp = L.sidePipes, tp = L.tiltPipes || { share: 0 };
+  const L = LEVELS[li], n = pipesFor(li), gap = L.pipeGap, mp = L.movingPipes, sp = L.sidePipes, tp = L.tiltPipes || { share: 0 }, gs = L.shrinkPipes || { share: 0 };
   const r = mulberry32(seed >>> 0 || 1), list = [];
   let lastC = null, lastAmp = 0, lastH = 0, lastT = 0;
   for (let idx = 0; idx < n; idx++) {
@@ -21570,6 +21580,7 @@ function makeLayout(li, seed) {
     const moving = idx > 0 && mp.share > 0 && r() < mp.share;
     const side = idx > 0 && sp.share > 0 && r() < sp.share;
     const tilt = idx > 0 && tp.share > 0 && r() < tp.share;
+    const shrink = idx > 0 && gs.share > 0 && r() < gs.share;
     const amp = moving ? mp.amplitude : 0, hamp = side ? sp.amplitude : 0, tsh = tilt ? TILT_SHIFT * tp.angle / 0.17 : 0;
     const edge = (moving ? CONFIG.MOVING_EDGE_MARGIN + amp : CONFIG.PIPE_EDGE_MARGIN) + (tilt ? CONFIG.TILT_MARGIN : 0);
     const minTop = edge, maxTop = GROUND_Y - edge - gap;
@@ -21585,7 +21596,8 @@ function makeLayout(li, seed) {
     top = Math.round(top);
     list.push({ top, amp, period: moving ? mp.period : 1, phase: moving ? r() * TAU : 0, motion: moving ? (mp.motion || 'sine') : 'sine',
       hamp, hperiod: side ? sp.period : 1, hphase: side ? r() * TAU : 0,
-      tamp: tilt ? tp.angle : 0, tperiod: tilt ? tp.period : 1, tphase: tilt ? r() * TAU : 0, v: Math.floor(r() * 2) });
+      tamp: tilt ? tp.angle : 0, tperiod: tilt ? tp.period : 1, tphase: tilt ? r() * TAU : 0,
+      gamp: shrink ? Math.min(gs.amount, gap - 140) : 0, gperiod: shrink ? gs.period : 1, gphase: shrink ? r() * TAU : 0, v: Math.floor(r() * 2) });
     lastC = top + gap / 2; lastAmp = amp; lastH = hamp; lastT = tsh;
   }
   return { li, seed: seed >>> 0, list, base: 0, shiftFrom: Infinity };
@@ -21610,9 +21622,11 @@ function spawnPipe(behind) {
   const li = game.level, L = LEVELS[li], idx = game.pipesSpawned, e = game.layout.list[idx];
   // Das erste Rohr nach Start oder Checkpoint steht still und gerade
   const calm = idx === game.pipesStart && idx > 0;
-  const p = { type: 'pipe', idx, slot: slotOf(idx), gap: L.pipeGap, gy0: e.top, amp: calm ? 0 : e.amp, period: e.period, phase: e.phase, motion: e.motion,
-    hamp: calm ? 0 : e.hamp, hperiod: e.hperiod, hphase: e.hphase, tamp: calm ? 0 : e.tamp, tperiod: e.tperiod, tphase: e.tphase, v: e.v, passed: !!behind };
-  p.gapY = p.pgapY = pipeGapAt(p, game.wt);
+  const p = { type: 'pipe', idx, slot: slotOf(idx), gap: L.pipeGap, gap0: L.pipeGap, gy0: e.top, amp: calm ? 0 : e.amp, period: e.period, phase: e.phase, motion: e.motion,
+    hamp: calm ? 0 : e.hamp, hperiod: e.hperiod, hphase: e.hphase, tamp: calm ? 0 : e.tamp, tperiod: e.tperiod, tphase: e.tphase,
+    gamp: calm ? 0 : (e.gamp || 0), gperiod: e.gperiod || 1, gphase: e.gphase || 0, v: e.v, passed: !!behind };
+  p.gap = pipeGapSizeAt(p, game.wt);
+  p.gapY = p.pgapY = pipeGapAt(p, game.wt) + (p.gap0 - p.gap) / 2;
   p.ox = p.pox = pipeOffsetAt(p, game.wt);
   p.ang = p.pang = pipeAngleAt(p, game.wt);
   const prev = pipes.length ? pipes[pipes.length - 1] : null;
@@ -21652,13 +21666,14 @@ function updatePipes(dt) {
     while (spawnDue()) spawnPipe(false);
   }
   for (const p of pipes) {
-    if (p.amp) p.gapY = pipeGapAt(p, game.wt);
+    if (p.gamp) p.gap = pipeGapSizeAt(p, game.wt);
+    if (p.amp || p.gamp) p.gapY = pipeGapAt(p, game.wt) + (p.gap0 - p.gap) / 2;
     if (p.hamp) p.ox = pipeOffsetAt(p, game.wt);
     if (p.tamp) p.ang = pipeAngleAt(p, game.wt);
   }
   const bwx = birdWorldX();
   for (const p of pipes) {
-    if (!p.passed && pipeX(p) + PW_ < bwx) {
+    if (!p.passed && p.slot + p.hamp + PW_ < bwx) {
       p.passed = true;
       game.pipesPassed++;
       game.obsPop = 1;
@@ -21667,13 +21682,13 @@ function updatePipes(dt) {
       onPipePassed();
     }
   }
-  if (pipes.length && pipeX(pipes[0]) + PW_ + 60 < game.scroll) pipes = pipes.filter(p => pipeX(p) + PW_ + 60 > game.scroll);
+  if (pipes.length && pipeReach(pipes[0]) + 60 < game.scroll) pipes = pipes.filter(p => pipeReach(p) + 60 > game.scroll);
 }
 
-// Gedrehtes Rechteck (lokal x in [-hw, hw], y in [y0, y1] um den Drehpunkt cx, cy) gegen eine achsparallele Box (SAT)
-function obbHitsBox(cx, cy, ang, hw, y0, y1, box) {
+// Gedrehtes Rechteck (lokal x in [x0, x1], y in [y0, y1] um den Drehpunkt cx, cy) gegen eine achsparallele Box (SAT)
+function obbHitsBox(cx, cy, ang, x0, x1, y0, y1, box) {
   const c = Math.cos(ang), s = Math.sin(ang);
-  const pts = [[-hw, y0], [hw, y0], [hw, y1], [-hw, y1]].map(([lx, ly]) => [cx + lx * c - ly * s, cy + lx * s + ly * c]);
+  const pts = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([lx, ly]) => [cx + lx * c - ly * s, cy + lx * s + ly * c]);
   const bp = [[box.x, box.y], [box.x + box.w, box.y], [box.x + box.w, box.y + box.h], [box.x, box.y + box.h]];
   for (const [ax, ay] of [[1, 0], [0, 1], [c, s], [-s, c]]) {
     let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
@@ -21685,19 +21700,19 @@ function obbHitsBox(cx, cy, ang, hw, y0, y1, box) {
 }
 
 function pipeHits(p, box) {
-  const x = pipeX(p) - game.scroll, bot = p.gapY + p.gap;
+  const x = pipeX(p) - game.scroll, bot = p.gapY + p.gap, o = p.ox || 0;
   if (p.ang) {
-    if (box.x > x + PW_ + 40 || box.x + box.w < x - 40) return false;
-    const cx = x + PW_ / 2, cy = p.gapY + p.gap / 2, hg = p.gap / 2;
-    return obbHitsBox(cx, cy, p.ang, PW_ / 2, -900, -hg, box) || obbHitsBox(cx, cy, p.ang, PW_ / 2, hg, 900, box);
+    if (box.x > x + PW_ + Math.abs(o) + 40 || box.x + box.w < x - Math.abs(o) - 40) return false;
+    const cx = x + PW_ / 2, cy = p.gapY + p.gap / 2, hg = p.gap / 2, hw = PW_ / 2;
+    return obbHitsBox(cx, cy, p.ang, o - hw, o + hw, -900, -hg, box) || obbHitsBox(cx, cy, p.ang, -o - hw, -o + hw, hg, 900, box);
   }
-  return overlap(box, { x, y: -400, w: PW_, h: p.gapY + 400 }) || overlap(box, { x, y: bot, w: PW_, h: GROUND_Y - bot + 60 });
+  return overlap(box, { x: x + o, y: -400, w: PW_, h: p.gapY + 400 }) || overlap(box, { x: x - o, y: bot, w: PW_, h: GROUND_Y - bot + 60 });
 }
 
 // Nächstes Rohr, dessen Lücke der Vogel noch durchfliegen muss
 function nextPipe() {
   const bwx = birdWorldX();
-  for (const p of pipes) if (pipeX(p) + PW_ > bwx) return p;
+  for (const p of pipes) if (pipeReach(p) > bwx) return p;
   return null;
 }
 
@@ -21719,17 +21734,18 @@ function drawPipes(cache, a) {
   ctx.fillStyle = rgba(INK, CONFIG.SHADOW_ALPHA);
   const sxo = Math.round(SHADOW.x * 0.6 * k), syo = Math.round(SHADOW.y * 0.6 * k), w = Math.round(PW_ * k);
   for (const p of pipes) {
-    const gy = lerp(p.pgapY, p.gapY, a), x = wxToDev(pipeXa(p, a)) + sxo;
-    if (x > canvas.width || x + w < -20) continue;
+    const gy = lerp(p.pgapY, p.gapY, a), x = wxToDev(pipeXa(p, a)) + sxo, o = Math.round(pipeOxa(p, a) * k);
+    if (x > canvas.width + Math.abs(o) || x + w < -20 - Math.abs(o)) continue;
     const ang = p.tamp ? lerp(p.pang, p.ang, a) : 0;
     if (ang) { ctx.save(); tiltDev(x + w / 2, Math.round((gy + p.gap / 2) * k) + syo, ang); }
-    ctx.fillRect(x, -Math.round(80 * k), w, Math.round((gy + 80) * k) + syo);
-    ctx.fillRect(x, Math.round((gy + p.gap) * k) + syo, w, Math.round((GROUND_Y + 60 - gy - p.gap) * k));
+    ctx.fillRect(x + o, -Math.round(80 * k), w, Math.round((gy + 80) * k) + syo);
+    ctx.fillRect(x - o, Math.round((gy + p.gap) * k) + syo, w, Math.round((GROUND_Y + 60 - gy - p.gap) * k));
     if (ang) ctx.restore();
   }
+  drawPipeDev.a = a;
   for (const p of pipes) {
     const dx = wxToDev(pipeXa(p, a));
-    if (dx > canvas.width + 40 * k || dx < -120 * k) continue;
+    if (dx > canvas.width + 80 * k || dx < -160 * k) continue;
     const gy = lerp(p.pgapY, p.gapY, a), ang = p.tamp ? lerp(p.pang, p.ang, a) : 0;
     if (ang) {
       ctx.save();
@@ -21748,10 +21764,13 @@ function tiltDev(px, py, ang) {
   ctx.translate(-px, -py);
 }
 
-function drawPipeDev(ps, p, dx, gy, tilted) {
+function drawPipeDev(ps, p, dx0, gy, tilted) {
   const k = view.k, body = ps.bodies[p.v], f = k / body.ks, PCH_ = CONFIG.PIPE_CAP_H;
   ctx.imageSmoothingEnabled = tilted || f !== 1;
-  const bx = dx + Math.round(body.x0 * k), bw = Math.round(body.c.width * f);
+  // Oberes Rohr um +o, unteres um -o versetzt (gegeneinander schiebende Paare)
+  const o = Math.round(pipeOxa(p, drawPipeDev.a) * k);
+  let dx = dx0 + o, bx = dx + Math.round(body.x0 * k);
+  const bw = Math.round(body.c.width * f);
   // Gekippt reichen die Körper weiter über Bildrand und Boden hinaus, damit keine Enden sichtbar werden
   const topEnd = Math.round((gy - PCH_) * k), topStart = -Math.round((tilted ? 90 : 20) * k);
   if (topEnd > topStart) {
@@ -21763,6 +21782,8 @@ function drawPipeDev(ps, p, dx, gy, tilted) {
       if (!tilted) break;
     }
   }
+  drawSpriteDev(ps.capTop, dx, Math.round((gy - PCH_) * k));
+  dx = dx0 - o; bx = dx + Math.round(body.x0 * k);
   const botStart = Math.round((gy + p.gap + PCH_) * k), botEnd = Math.round((GROUND_Y + (tilted ? 70 : 10)) * k);
   if (botEnd > botStart) {
     let y = botStart;
@@ -21773,7 +21794,6 @@ function drawPipeDev(ps, p, dx, gy, tilted) {
       if (!tilted) break;
     }
   }
-  drawSpriteDev(ps.capTop, dx, Math.round((gy - PCH_) * k));
   drawSpriteDev(ps.capBot, dx, Math.round((gy + p.gap) * k));
 }
 
@@ -22704,9 +22724,10 @@ function drawDarkness(a, strength) {
     ctx.save();
     if (ang) { const px = x + PW_ / 2, py = gy + p.gap / 2; ctx.translate(px, py); ctx.rotate(ang); ctx.translate(-px, -py); }
     const ext = ang ? 60 : 0;
+    const o = pipeOxa(p, a);
     ctx.beginPath();
-    ctx.moveTo(x, -ext); ctx.lineTo(x, gy); ctx.lineTo(x + PW_, gy); ctx.lineTo(x + PW_, -ext);
-    ctx.moveTo(x, GROUND_Y + ext); ctx.lineTo(x, gy + p.gap); ctx.lineTo(x + PW_, gy + p.gap); ctx.lineTo(x + PW_, GROUND_Y + ext);
+    ctx.moveTo(x + o, -ext); ctx.lineTo(x + o, gy); ctx.lineTo(x + o + PW_, gy); ctx.lineTo(x + o + PW_, -ext);
+    ctx.moveTo(x - o, GROUND_Y + ext); ctx.lineTo(x - o, gy + p.gap); ctx.lineTo(x - o + PW_, gy + p.gap); ctx.lineTo(x - o + PW_, GROUND_Y + ext);
     ctx.stroke();
     ctx.restore();
   }
@@ -26954,7 +26975,13 @@ function tryCode(li, value) {
   const v = String(value || '').trim().toUpperCase();
   if (!Number.isInteger(li) || li < 0 || li >= LEVELS.length) return { ok: false, text: 'Unbekanntes Level.' };
   if (v.toLowerCase() === CONFIG.PASSWORD || (v.length === 4 && v === LEVEL_CODES[li])) {
-    if (v.toLowerCase() === CONFIG.PASSWORD) progress.bot[li] = true;   // Startpunkt per Spule wählbar
+    if (v.toLowerCase() === CONFIG.PASSWORD) {
+      // Passwort: alle Level frei, dazu in der Pause die Bot-Spule (Startpunkt wählen)
+      progress.open.fill(true);
+      progress.bot.fill(true);
+      saveProgress();
+      return { ok: true, li, text: 'Alle Level freigeschaltet. In der Pause gibt es jetzt die Bot-Spule.' };
+    }
     unlockLevel(li);
     return { ok: true, li, text: `Level ${li + 1} freigeschaltet: ${LEVELS[li].name}` };
   }
@@ -27176,7 +27203,6 @@ const checkpointAt = li => (diff() === 'schwer' ? 0 : checkpointFor(li));
 
 function startFromMenu(li) {
   if (li < 0 || li >= LEVELS.length || !progress.open[li]) return;
-  if (progress.bot[li] && !SIM.on) { enterScrub(li); return; }
   game.runFrames = 0;
   game.deaths = 0;
   game.runFromStart = li === 0;
@@ -27869,9 +27895,15 @@ function defeatPanel() {
   const d = game.defeat || {}, h = 168 + (d.skin ? 92 : 0) + (d.editor ? 34 : 0);
   return panelRect(340, h, 300);
 }
+// Bot-Spule in der Pause: nur nach dem Passwort und nicht im Ansturm
+const pauseHasScrub = () => !!progress.bot[game.level] && !isRushLevel(game.level) && game.state !== 'SCRUB';
+const pausePanel = () => panelRect(288, pauseHasScrub() ? 300 : 252, 332);
 function pauseButtons() {
-  const P = panelRect(288, 252, 332), bx = P.x + 24, bw = P.w - 48;
-  return [{ id: 'resume', x: bx, y: P.y + 86, w: bw, h: 46 }, { id: 'music', x: bx, y: P.y + 144, w: bw, h: 38 }, { id: 'menu', x: bx, y: P.y + 194, w: bw, h: 38 }];
+  const P = pausePanel(), bx = P.x + 24, bw = P.w - 48, list = [{ id: 'resume', x: bx, y: P.y + 86, w: bw, h: 46 }];
+  let y = P.y + 144;
+  if (pauseHasScrub()) { list.push({ id: 'scrub', x: bx, y, w: bw, h: 38 }); y += 48; }
+  list.push({ id: 'music', x: bx, y, w: bw, h: 38 }, { id: 'menu', x: bx, y: y + 50, w: bw, h: 38 });
+  return list;
 }
 function victoryButtons() {
   const P = panelRect(340, 440, 320), bx = P.x + 24, bw = P.w - 48;
@@ -28009,6 +28041,7 @@ function onPress(p, src) {
     const b = hitList(pauseButtons(), p);
     if (b && b.id === 'menu') goMenu();
     else if (b && b.id === 'music') Music.toggle();
+    else if (b && b.id === 'scrub') enterScrub(game.level);
     else setPaused(false);
     return;
   }
@@ -28849,16 +28882,18 @@ function drawGameOver() {
 }
 
 function drawPause() {
-  const C = COLORS[game.level], P = panelRect(288, 252, 332);
+  const C = COLORS[game.level], P = pausePanel();
   ctx.fillStyle = rgba(INK, 0.55);
   ctx.fillRect(0, 0, W, H);
   panel(P.x, P.y, P.w, P.h, C);
   text('Pause', W / 2, P.y + 36, FS.lg, CREAM);
   text('Leertaste: weiter, Esc: Menü, M: Musik', W / 2, P.y + 66, FS.xxs, rgba(CREAM, 0.75), { weight: 'normal' });
-  const [r, m, mn] = pauseButtons();
-  button(r, 'Weiter', true, C);
-  button(m, Music.enabled ? 'Musik an' : 'Musik aus', false, C);
-  button(mn, 'Zum Menü', false, C);
+  for (const b of pauseButtons()) {
+    if (b.id === 'resume') button(b, 'Weiter', true, C);
+    else if (b.id === 'scrub') button(b, 'Startpunkt spulen', false, C);
+    else if (b.id === 'music') button(b, Music.enabled ? 'Musik an' : 'Musik aus', false, C);
+    else button(b, 'Zum Menü', false, C);
+  }
 }
 
 function drawVictory() {
@@ -29278,7 +29313,7 @@ function pipeTarget(last) {
   // genau dort, deshalb zielt der Bot auch hier auf die Lückenmitte.
   if (p.amp) {
     const tArr = (pipeX(p) - (birdWorldX() + CONFIG.BIRD_W)) / (CONFIG.SCROLL_SPEED * wind.speed);
-    return pipeGapAt(p, game.wt + clamp(tArr, 10, AT.lead)) + p.gap / 2;
+    return pipeGapAt(p, game.wt + clamp(tArr, 10, AT.lead)) + p.gap0 / 2;
   }
   return pipeCenter(p);
 }

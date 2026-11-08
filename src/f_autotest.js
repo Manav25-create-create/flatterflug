@@ -66,7 +66,7 @@ function pipeTarget(last) {
   // genau dort, deshalb zielt der Bot auch hier auf die Lückenmitte.
   if (p.amp) {
     const tArr = (pipeX(p) - (birdWorldX() + CONFIG.BIRD_W)) / (CONFIG.SCROLL_SPEED * wind.speed);
-    return pipeGapAt(p, game.wt + clamp(tArr, 10, AT.lead)) + p.gap / 2;
+    return pipeGapAt(p, game.wt + clamp(tArr, 10, AT.lead)) + p.gap0 / 2;
   }
   return pipeCenter(p);
 }

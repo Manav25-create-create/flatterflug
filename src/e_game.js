@@ -349,7 +349,13 @@ function tryCode(li, value) {
   const v = String(value || '').trim().toUpperCase();
   if (!Number.isInteger(li) || li < 0 || li >= LEVELS.length) return { ok: false, text: 'Unbekanntes Level.' };
   if (v.toLowerCase() === CONFIG.PASSWORD || (v.length === 4 && v === LEVEL_CODES[li])) {
-    if (v.toLowerCase() === CONFIG.PASSWORD) progress.bot[li] = true;   // Startpunkt per Spule wählbar
+    if (v.toLowerCase() === CONFIG.PASSWORD) {
+      // Passwort: alle Level frei, dazu in der Pause die Bot-Spule (Startpunkt wählen)
+      progress.open.fill(true);
+      progress.bot.fill(true);
+      saveProgress();
+      return { ok: true, li, text: 'Alle Level freigeschaltet. In der Pause gibt es jetzt die Bot-Spule.' };
+    }
     unlockLevel(li);
     return { ok: true, li, text: `Level ${li + 1} freigeschaltet: ${LEVELS[li].name}` };
   }
@@ -571,7 +577,6 @@ const checkpointAt = li => (diff() === 'schwer' ? 0 : checkpointFor(li));
 
 function startFromMenu(li) {
   if (li < 0 || li >= LEVELS.length || !progress.open[li]) return;
-  if (progress.bot[li] && !SIM.on) { enterScrub(li); return; }
   game.runFrames = 0;
   game.deaths = 0;
   game.runFromStart = li === 0;
@@ -1264,9 +1269,15 @@ function defeatPanel() {
   const d = game.defeat || {}, h = 168 + (d.skin ? 92 : 0) + (d.editor ? 34 : 0);
   return panelRect(340, h, 300);
 }
+// Bot-Spule in der Pause: nur nach dem Passwort und nicht im Ansturm
+const pauseHasScrub = () => !!progress.bot[game.level] && !isRushLevel(game.level) && game.state !== 'SCRUB';
+const pausePanel = () => panelRect(288, pauseHasScrub() ? 300 : 252, 332);
 function pauseButtons() {
-  const P = panelRect(288, 252, 332), bx = P.x + 24, bw = P.w - 48;
-  return [{ id: 'resume', x: bx, y: P.y + 86, w: bw, h: 46 }, { id: 'music', x: bx, y: P.y + 144, w: bw, h: 38 }, { id: 'menu', x: bx, y: P.y + 194, w: bw, h: 38 }];
+  const P = pausePanel(), bx = P.x + 24, bw = P.w - 48, list = [{ id: 'resume', x: bx, y: P.y + 86, w: bw, h: 46 }];
+  let y = P.y + 144;
+  if (pauseHasScrub()) { list.push({ id: 'scrub', x: bx, y, w: bw, h: 38 }); y += 48; }
+  list.push({ id: 'music', x: bx, y, w: bw, h: 38 }, { id: 'menu', x: bx, y: y + 50, w: bw, h: 38 });
+  return list;
 }
 function victoryButtons() {
   const P = panelRect(340, 440, 320), bx = P.x + 24, bw = P.w - 48;
@@ -1404,6 +1415,7 @@ function onPress(p, src) {
     const b = hitList(pauseButtons(), p);
     if (b && b.id === 'menu') goMenu();
     else if (b && b.id === 'music') Music.toggle();
+    else if (b && b.id === 'scrub') enterScrub(game.level);
     else setPaused(false);
     return;
   }
@@ -2244,16 +2256,18 @@ function drawGameOver() {
 }
 
 function drawPause() {
-  const C = COLORS[game.level], P = panelRect(288, 252, 332);
+  const C = COLORS[game.level], P = pausePanel();
   ctx.fillStyle = rgba(INK, 0.55);
   ctx.fillRect(0, 0, W, H);
   panel(P.x, P.y, P.w, P.h, C);
   text('Pause', W / 2, P.y + 36, FS.lg, CREAM);
   text('Leertaste: weiter, Esc: Menü, M: Musik', W / 2, P.y + 66, FS.xxs, rgba(CREAM, 0.75), { weight: 'normal' });
-  const [r, m, mn] = pauseButtons();
-  button(r, 'Weiter', true, C);
-  button(m, Music.enabled ? 'Musik an' : 'Musik aus', false, C);
-  button(mn, 'Zum Menü', false, C);
+  for (const b of pauseButtons()) {
+    if (b.id === 'resume') button(b, 'Weiter', true, C);
+    else if (b.id === 'scrub') button(b, 'Startpunkt spulen', false, C);
+    else if (b.id === 'music') button(b, Music.enabled ? 'Musik an' : 'Musik aus', false, C);
+    else button(b, 'Zum Menü', false, C);
+  }
 }
 
 function drawVictory() {

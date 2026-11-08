@@ -267,9 +267,10 @@ function wingPhase() {
 
 // ============================================================
 // Rohre: generische Objekte mit type 'pipe'. Bewegte Paare fahren
-// gemeinsam auf und ab (movingPipes), schwanken nach links und rechts
-// (sidePipes) und/oder kippen um die Lückenmitte (tiltPipes); die Lücke
-// bleibt immer gleich groß.
+// gemeinsam auf und ab (movingPipes), oberes und unteres Rohr schieben sich
+// seitlich gegeneinander (sidePipes: oben nach rechts, unten nach links und
+// zurück), kippen um die Lückenmitte (tiltPipes) oder die Lücke zieht sich
+// langsam zusammen und geht wieder auf (shrinkPipes, nie unter 140 px).
 // Bewegungsarten: 'sine' (gleichmäßig) und 'step' (Uhrwerk: halten, dann zügig umsetzen).
 // Alle Rohre eines Versuchs stehen vorab im Layout (aus einem Seed). Dadurch
 // sieht ein Neustart am Checkpoint genauso aus wie der Lauf davor, inklusive
@@ -289,7 +290,7 @@ function pipeGapAt(p, wt) {
   const u = p.phase + TAU * wt / p.period;
   return p.gy0 + p.amp * (p.motion === 'step' ? stepWave(u) : Math.sin(u));
 }
-// Seitlicher Versatz (Weltkoordinaten) zum Zeitpunkt wt
+// Seitlicher Versatz zum Zeitpunkt wt: oberes Rohr +ox, unteres -ox (Weltkoordinaten)
 function pipeOffsetAt(p, wt) {
   return p.hamp ? p.hamp * Math.sin(p.hphase + TAU * wt / p.hperiod) : 0;
 }
@@ -297,16 +298,22 @@ function pipeOffsetAt(p, wt) {
 function pipeAngleAt(p, wt) {
   return p.tamp ? p.tamp * Math.sin(p.tphase + TAU * wt / p.tperiod) : 0;
 }
+// Lückengröße zum Zeitpunkt wt (Zusammenziehen: weich auf gap0 - gamp und zurück)
+function pipeGapSizeAt(p, wt) {
+  return p.gamp ? p.gap0 - p.gamp * (0.5 - 0.5 * Math.cos(p.gphase + TAU * wt / p.gperiod)) : p.gap0;
+}
 const pipeCenter = p => p.gapY + p.gap / 2;
-const pipeX = p => p.slot + p.ox;                       // linke Kante in Weltkoordinaten, aktuell
-const pipeXa = (p, a) => p.slot + lerp(p.pox, p.ox, a);  // interpoliert zum Zeichnen
+const pipeX = p => p.slot;                              // Bezugskante (Mitte des Paars minus halbe Breite), Weltkoordinaten
+const pipeXa = (p, a) => p.slot;
+const pipeReach = p => p.slot + Math.abs(p.ox) + PW_;  // rechteste Kante beider Rohre
+const pipeOxa = (p, a) => lerp(p.pox, p.ox, a);
 // Lückenmitte an der Weltkoordinate wx (bei gekippten Paaren liegt die Lücke schräg)
 const pipeCenterAtX = (p, wx) => pipeCenter(p) + (p.ang ? (wx - (pipeX(p) + PW_ / 2)) * Math.tan(p.ang) : 0);
 
 // Layout eines Versuchs: Höhe, Bewegung und Variante jedes Rohrs, aus dem Seed
 const TILT_SHIFT = (PW_ / 2 + CONFIG.BIRD_W) * 0.17;   // so weit wandert die Lückenmitte am Vogel bei voller Neigung
 function makeLayout(li, seed) {
-  const L = LEVELS[li], n = pipesFor(li), gap = L.pipeGap, mp = L.movingPipes, sp = L.sidePipes, tp = L.tiltPipes || { share: 0 };
+  const L = LEVELS[li], n = pipesFor(li), gap = L.pipeGap, mp = L.movingPipes, sp = L.sidePipes, tp = L.tiltPipes || { share: 0 }, gs = L.shrinkPipes || { share: 0 };
   const r = mulberry32(seed >>> 0 || 1), list = [];
   let lastC = null, lastAmp = 0, lastH = 0, lastT = 0;
   for (let idx = 0; idx < n; idx++) {
@@ -314,6 +321,7 @@ function makeLayout(li, seed) {
     const moving = idx > 0 && mp.share > 0 && r() < mp.share;
     const side = idx > 0 && sp.share > 0 && r() < sp.share;
     const tilt = idx > 0 && tp.share > 0 && r() < tp.share;
+    const shrink = idx > 0 && gs.share > 0 && r() < gs.share;
     const amp = moving ? mp.amplitude : 0, hamp = side ? sp.amplitude : 0, tsh = tilt ? TILT_SHIFT * tp.angle / 0.17 : 0;
     const edge = (moving ? CONFIG.MOVING_EDGE_MARGIN + amp : CONFIG.PIPE_EDGE_MARGIN) + (tilt ? CONFIG.TILT_MARGIN : 0);
     const minTop = edge, maxTop = GROUND_Y - edge - gap;
@@ -329,7 +337,8 @@ function makeLayout(li, seed) {
     top = Math.round(top);
     list.push({ top, amp, period: moving ? mp.period : 1, phase: moving ? r() * TAU : 0, motion: moving ? (mp.motion || 'sine') : 'sine',
       hamp, hperiod: side ? sp.period : 1, hphase: side ? r() * TAU : 0,
-      tamp: tilt ? tp.angle : 0, tperiod: tilt ? tp.period : 1, tphase: tilt ? r() * TAU : 0, v: Math.floor(r() * 2) });
+      tamp: tilt ? tp.angle : 0, tperiod: tilt ? tp.period : 1, tphase: tilt ? r() * TAU : 0,
+      gamp: shrink ? Math.min(gs.amount, gap - 140) : 0, gperiod: shrink ? gs.period : 1, gphase: shrink ? r() * TAU : 0, v: Math.floor(r() * 2) });
     lastC = top + gap / 2; lastAmp = amp; lastH = hamp; lastT = tsh;
   }
   return { li, seed: seed >>> 0, list, base: 0, shiftFrom: Infinity };
@@ -354,9 +363,11 @@ function spawnPipe(behind) {
   const li = game.level, L = LEVELS[li], idx = game.pipesSpawned, e = game.layout.list[idx];
   // Das erste Rohr nach Start oder Checkpoint steht still und gerade
   const calm = idx === game.pipesStart && idx > 0;
-  const p = { type: 'pipe', idx, slot: slotOf(idx), gap: L.pipeGap, gy0: e.top, amp: calm ? 0 : e.amp, period: e.period, phase: e.phase, motion: e.motion,
-    hamp: calm ? 0 : e.hamp, hperiod: e.hperiod, hphase: e.hphase, tamp: calm ? 0 : e.tamp, tperiod: e.tperiod, tphase: e.tphase, v: e.v, passed: !!behind };
-  p.gapY = p.pgapY = pipeGapAt(p, game.wt);
+  const p = { type: 'pipe', idx, slot: slotOf(idx), gap: L.pipeGap, gap0: L.pipeGap, gy0: e.top, amp: calm ? 0 : e.amp, period: e.period, phase: e.phase, motion: e.motion,
+    hamp: calm ? 0 : e.hamp, hperiod: e.hperiod, hphase: e.hphase, tamp: calm ? 0 : e.tamp, tperiod: e.tperiod, tphase: e.tphase,
+    gamp: calm ? 0 : (e.gamp || 0), gperiod: e.gperiod || 1, gphase: e.gphase || 0, v: e.v, passed: !!behind };
+  p.gap = pipeGapSizeAt(p, game.wt);
+  p.gapY = p.pgapY = pipeGapAt(p, game.wt) + (p.gap0 - p.gap) / 2;
   p.ox = p.pox = pipeOffsetAt(p, game.wt);
   p.ang = p.pang = pipeAngleAt(p, game.wt);
   const prev = pipes.length ? pipes[pipes.length - 1] : null;
@@ -396,13 +407,14 @@ function updatePipes(dt) {
     while (spawnDue()) spawnPipe(false);
   }
   for (const p of pipes) {
-    if (p.amp) p.gapY = pipeGapAt(p, game.wt);
+    if (p.gamp) p.gap = pipeGapSizeAt(p, game.wt);
+    if (p.amp || p.gamp) p.gapY = pipeGapAt(p, game.wt) + (p.gap0 - p.gap) / 2;
     if (p.hamp) p.ox = pipeOffsetAt(p, game.wt);
     if (p.tamp) p.ang = pipeAngleAt(p, game.wt);
   }
   const bwx = birdWorldX();
   for (const p of pipes) {
-    if (!p.passed && pipeX(p) + PW_ < bwx) {
+    if (!p.passed && p.slot + p.hamp + PW_ < bwx) {
       p.passed = true;
       game.pipesPassed++;
       game.obsPop = 1;
@@ -411,13 +423,13 @@ function updatePipes(dt) {
       onPipePassed();
     }
   }
-  if (pipes.length && pipeX(pipes[0]) + PW_ + 60 < game.scroll) pipes = pipes.filter(p => pipeX(p) + PW_ + 60 > game.scroll);
+  if (pipes.length && pipeReach(pipes[0]) + 60 < game.scroll) pipes = pipes.filter(p => pipeReach(p) + 60 > game.scroll);
 }
 
-// Gedrehtes Rechteck (lokal x in [-hw, hw], y in [y0, y1] um den Drehpunkt cx, cy) gegen eine achsparallele Box (SAT)
-function obbHitsBox(cx, cy, ang, hw, y0, y1, box) {
+// Gedrehtes Rechteck (lokal x in [x0, x1], y in [y0, y1] um den Drehpunkt cx, cy) gegen eine achsparallele Box (SAT)
+function obbHitsBox(cx, cy, ang, x0, x1, y0, y1, box) {
   const c = Math.cos(ang), s = Math.sin(ang);
-  const pts = [[-hw, y0], [hw, y0], [hw, y1], [-hw, y1]].map(([lx, ly]) => [cx + lx * c - ly * s, cy + lx * s + ly * c]);
+  const pts = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([lx, ly]) => [cx + lx * c - ly * s, cy + lx * s + ly * c]);
   const bp = [[box.x, box.y], [box.x + box.w, box.y], [box.x + box.w, box.y + box.h], [box.x, box.y + box.h]];
   for (const [ax, ay] of [[1, 0], [0, 1], [c, s], [-s, c]]) {
     let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
@@ -429,19 +441,19 @@ function obbHitsBox(cx, cy, ang, hw, y0, y1, box) {
 }
 
 function pipeHits(p, box) {
-  const x = pipeX(p) - game.scroll, bot = p.gapY + p.gap;
+  const x = pipeX(p) - game.scroll, bot = p.gapY + p.gap, o = p.ox || 0;
   if (p.ang) {
-    if (box.x > x + PW_ + 40 || box.x + box.w < x - 40) return false;
-    const cx = x + PW_ / 2, cy = p.gapY + p.gap / 2, hg = p.gap / 2;
-    return obbHitsBox(cx, cy, p.ang, PW_ / 2, -900, -hg, box) || obbHitsBox(cx, cy, p.ang, PW_ / 2, hg, 900, box);
+    if (box.x > x + PW_ + Math.abs(o) + 40 || box.x + box.w < x - Math.abs(o) - 40) return false;
+    const cx = x + PW_ / 2, cy = p.gapY + p.gap / 2, hg = p.gap / 2, hw = PW_ / 2;
+    return obbHitsBox(cx, cy, p.ang, o - hw, o + hw, -900, -hg, box) || obbHitsBox(cx, cy, p.ang, -o - hw, -o + hw, hg, 900, box);
   }
-  return overlap(box, { x, y: -400, w: PW_, h: p.gapY + 400 }) || overlap(box, { x, y: bot, w: PW_, h: GROUND_Y - bot + 60 });
+  return overlap(box, { x: x + o, y: -400, w: PW_, h: p.gapY + 400 }) || overlap(box, { x: x - o, y: bot, w: PW_, h: GROUND_Y - bot + 60 });
 }
 
 // Nächstes Rohr, dessen Lücke der Vogel noch durchfliegen muss
 function nextPipe() {
   const bwx = birdWorldX();
-  for (const p of pipes) if (pipeX(p) + PW_ > bwx) return p;
+  for (const p of pipes) if (pipeReach(p) > bwx) return p;
   return null;
 }
 
@@ -463,17 +475,18 @@ function drawPipes(cache, a) {
   ctx.fillStyle = rgba(INK, CONFIG.SHADOW_ALPHA);
   const sxo = Math.round(SHADOW.x * 0.6 * k), syo = Math.round(SHADOW.y * 0.6 * k), w = Math.round(PW_ * k);
   for (const p of pipes) {
-    const gy = lerp(p.pgapY, p.gapY, a), x = wxToDev(pipeXa(p, a)) + sxo;
-    if (x > canvas.width || x + w < -20) continue;
+    const gy = lerp(p.pgapY, p.gapY, a), x = wxToDev(pipeXa(p, a)) + sxo, o = Math.round(pipeOxa(p, a) * k);
+    if (x > canvas.width + Math.abs(o) || x + w < -20 - Math.abs(o)) continue;
     const ang = p.tamp ? lerp(p.pang, p.ang, a) : 0;
     if (ang) { ctx.save(); tiltDev(x + w / 2, Math.round((gy + p.gap / 2) * k) + syo, ang); }
-    ctx.fillRect(x, -Math.round(80 * k), w, Math.round((gy + 80) * k) + syo);
-    ctx.fillRect(x, Math.round((gy + p.gap) * k) + syo, w, Math.round((GROUND_Y + 60 - gy - p.gap) * k));
+    ctx.fillRect(x + o, -Math.round(80 * k), w, Math.round((gy + 80) * k) + syo);
+    ctx.fillRect(x - o, Math.round((gy + p.gap) * k) + syo, w, Math.round((GROUND_Y + 60 - gy - p.gap) * k));
     if (ang) ctx.restore();
   }
+  drawPipeDev.a = a;
   for (const p of pipes) {
     const dx = wxToDev(pipeXa(p, a));
-    if (dx > canvas.width + 40 * k || dx < -120 * k) continue;
+    if (dx > canvas.width + 80 * k || dx < -160 * k) continue;
     const gy = lerp(p.pgapY, p.gapY, a), ang = p.tamp ? lerp(p.pang, p.ang, a) : 0;
     if (ang) {
       ctx.save();
@@ -492,10 +505,13 @@ function tiltDev(px, py, ang) {
   ctx.translate(-px, -py);
 }
 
-function drawPipeDev(ps, p, dx, gy, tilted) {
+function drawPipeDev(ps, p, dx0, gy, tilted) {
   const k = view.k, body = ps.bodies[p.v], f = k / body.ks, PCH_ = CONFIG.PIPE_CAP_H;
   ctx.imageSmoothingEnabled = tilted || f !== 1;
-  const bx = dx + Math.round(body.x0 * k), bw = Math.round(body.c.width * f);
+  // Oberes Rohr um +o, unteres um -o versetzt (gegeneinander schiebende Paare)
+  const o = Math.round(pipeOxa(p, drawPipeDev.a) * k);
+  let dx = dx0 + o, bx = dx + Math.round(body.x0 * k);
+  const bw = Math.round(body.c.width * f);
   // Gekippt reichen die Körper weiter über Bildrand und Boden hinaus, damit keine Enden sichtbar werden
   const topEnd = Math.round((gy - PCH_) * k), topStart = -Math.round((tilted ? 90 : 20) * k);
   if (topEnd > topStart) {
@@ -507,6 +523,8 @@ function drawPipeDev(ps, p, dx, gy, tilted) {
       if (!tilted) break;
     }
   }
+  drawSpriteDev(ps.capTop, dx, Math.round((gy - PCH_) * k));
+  dx = dx0 - o; bx = dx + Math.round(body.x0 * k);
   const botStart = Math.round((gy + p.gap + PCH_) * k), botEnd = Math.round((GROUND_Y + (tilted ? 70 : 10)) * k);
   if (botEnd > botStart) {
     let y = botStart;
@@ -517,7 +535,6 @@ function drawPipeDev(ps, p, dx, gy, tilted) {
       if (!tilted) break;
     }
   }
-  drawSpriteDev(ps.capTop, dx, Math.round((gy - PCH_) * k));
   drawSpriteDev(ps.capBot, dx, Math.round((gy + p.gap) * k));
 }
 

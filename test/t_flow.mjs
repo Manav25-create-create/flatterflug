@@ -44,7 +44,15 @@ await page.waitForTimeout(50);
 await run(`render(1); 'ok'`);
 
 // 3. Bot-Spule in Level 13, Start beim Boss
-await run(`progress.open[12] = true; progress.bot[12] = true; startFromMenu(12); scrub.target = scrub.n - 1; 'ok'`);
+// Passwort schaltet alles frei; die Spule kommt erst über die Pause
+st = await run(`progress.open.fill(false); progress.open[0] = true; progress.bot.fill(false); const r = tryCode(12, 'Bot'); r.ok + '|' + progress.open.every(Boolean) + '|' + progress.bot.every(Boolean)`);
+check('Passwort Bot: alle Level frei', st === 'true|true|true', st);
+await run(`startFromMenu(12); 'ok'`);
+st = await run(`game.state`);
+check('Kein automatisches Spulen', st === 'LEVEL_INTRO', st);
+st = await run(`setPaused(true); const b = pauseButtons().map(b => b.id).join(','); const sb = pauseButtons().find(b => b.id === 'scrub'); onPress({ x: sb.x + 10, y: sb.y + 10 }, 'mouse'); b + '|' + game.state`);
+check('Pause: Spulen zwischen Weiter und Musik', st === 'resume,scrub,music,menu|SCRUB', st);
+await run(`scrub.target = scrub.n - 1; 'ok'`);
 for (let k = 0; k < 8; k++) await run(`update(); render(1); 'ok'`);
 await run(`scrub.cur = scrub.target; startFromScrub(); 'ok'`);
 st = await run(`game.state + '|' + game.waitTap + '|' + (boss ? boss.need : -1)`);
