@@ -72,81 +72,67 @@ function pipeTarget(last) {
 }
 
 // ---------- Bosskampf: Vorhersage der Angriffe an der Vogelspalte ----------
-// fut[k]: gesperrte Höhenbereiche der Vogelmitte im k-ten kommenden Update. fut.dyn: Geschosse, die erst
-// später starten und dabei auf die dann aktuelle Höhe des Vogels zielen (Zahnräder im Takt, gezielte
-// Muster während der Vorwarnung); die rechnet simulateTarget für jede geplante Flugbahn einzeln durch.
+// fut[k]: gesperrte Höhenbereiche der Vogelmitte im k-ten kommenden Update. Bewegung und Formen kommen aus
+// c2_boss.js (simAdvance, orbMove, orbBreak, FX[...].shape), also genau wie im Spiel.
+// fut.live: Geschosse, die der Vogelhöhe folgen (Irrlichter); fut.dyn: Angriffe, die erst später starten
+// und dabei auf die dann aktuelle Höhe des Vogels zielen ({ k: Start-Update, ky: Update, in dem die Höhe
+// gemessen wird, make }). Beides rechnet simulateTarget für jede geplante Flugbahn einzeln durch.
 const BOT_COL = () => [birdHomeX() - 3, birdHomeX() + CONFIG.BIRD_W + 3];
 const BOT_MARGIN = 15;
-// Wird das Geschoss in diesem Frame zum Rückpraller (wie in updateShots)?
-function orbGone(p) {
-  return p.y + p.r * 0.5 > GROUND_Y || p.x < -p.r - 6 || p.x > W + 90 || p.y < (p.grav > 0 || p.path ? -240 : -p.r - 20);
-}
 // Boss-x nach k Updates (updateBossIdle nähert ihn mit 10 % pro Frame der Heimposition)
 const bossXAt = k => bossHomeX() + (boss.x - bossHomeX()) * Math.pow(0.9, k);
+// Gesperrte Höhen der Vogelmitte für eine Form in der Vogelspalte
+function primBands(pr, bx0, bx1, m, out) {
+  if (pr.c) { const [x, y, r] = pr.c; if (x + r > bx0 && x - r < bx1) out.push([y - r - m, y + r + m]); return; }
+  if (pr.rect) { const [x, y, w, h] = pr.rect; if (x < bx1 && x + w > bx0) out.push([y - m, y + h + m]); return; }
+  const [x0, y0, x1, y1, hw] = pr.seg, lo = bx0 - hw, hi = bx1 + hw, xa = Math.min(x0, x1), xb = Math.max(x0, x1);
+  if (xb < lo || xa > hi) return;
+  if (xb - xa < 1e-6) { out.push([Math.min(y0, y1) - hw - m, Math.max(y0, y1) + hw + m]); return; }
+  const ya = y0 + (y1 - y0) * (clamp(lo, xa, xb) - x0) / (x1 - x0), yb = y0 + (y1 - y0) * (clamp(hi, xa, xb) - x0) / (x1 - x0);
+  out.push([Math.min(ya, yb) - hw - m, Math.max(ya, yb) + hw + m]);
+}
+function shotBands(p, bx0, bx1, m, out) {
+  if (p.fx) { for (const pr of FX[p.type].shape(p, p.t)) primBands(pr, bx0, bx1, m, out); }
+  else if (p.x + p.r > bx0 && p.x - p.r < bx1) out.push([p.y - p.r - m, p.y + p.r + m]);
+}
 function predictThreats(steps) {
-  const fut = [], [bx0, bx1] = BOT_COL(), m = BOT_MARGIN;
+  const fut = [], [bx0, bx1] = BOT_COL(), m = BOT_MARGIN, tmp = [];
   fut.dyn = [];
+  fut.live = [];
   const add = (k, lo, hi) => { (fut[k] || (fut[k] = [])).push([lo, hi]); };
-  const inCol = p => p.x + p.r > bx0 && p.x - p.r < bx1;
   for (const s of shots) {
     if (s.ghost) continue;                       // Rückpraller treffen den Vogel nicht
-    if (s.type === 'orb' || s.type === 'gear') {
-      if (s.orbit) {
-        const c = s.orbit;
-        let x = c.x, y = c.y, age = c.age, ang = s.ang;
-        for (let k = 1; k <= steps; k++) {
-          x += c.vx; y += c.vy; age++; ang += SPIRAL.spin;
-          const rad = spiralRadius(age), ox = x + Math.cos(ang) * rad, oy = y + Math.sin(ang) * rad;
-          if (ox + s.r > bx0 && ox - s.r < bx1) add(k, oy - s.r - m, oy + s.r + m);
-        }
-        continue;
-      }
-      // dieselbe Bewegung wie im Spiel (orbMove/orbBreak), samt Zerfall in Teile
-      let pcs = [orbClone(s)];
+    if (s.home || s.wisp) { fut.live.push(Object.assign({}, s)); continue; }
+    if (s.wall) wallThreat(fut, steps, bx0, bx1, m, 1, s.x, s.vx, s.gapY, s.drift, s.w, s.gapH / 2);
+    else if (s.type === 'laser') {
+      const l = laserLine(s), ya = l.oy + (bx0 - l.ox) * l.slope, yb = l.oy + (bx1 - l.ox) * l.slope;
+      for (let k = 1; k <= steps; k++) { const tt = s.t + k; if (tt >= s.warn - 1 && tt < s.warn + s.active + 1) add(k, Math.min(ya, yb) - s.thick / 2 - m, Math.max(ya, yb) + s.thick / 2 + m); }
+    } else {
+      // Geschosse und Effekte Schritt für Schritt wie im Spiel, samt Zerfall in Teile
+      let pcs = [Object.assign({}, s)];
       for (let k = 1; k <= steps && pcs.length; k++) {
         const next = [];
-        for (const p of pcs) {
-          p.t++;
-          orbMove(p);
-          const br = orbBreak(p);
-          if (br) {
-            for (const dv of br.dvs) {
-              const q = { x: p.x, y: p.y, vx: p.vx, vy: p.vy + dv, r: br.r, grav: 0, t: 0 };
-              if (inCol(q)) add(k, q.y - q.r - m, q.y + q.r + m);
-              next.push(q);
-            }
-            continue;
-          }
-          if (orbGone(p)) continue;
-          if (inCol(p)) add(k, p.y - p.r - m, p.y + p.r + m);
-          next.push(p);
+        for (const p of pcs) for (const q of simAdvance(p, 0)) {
+          tmp.length = 0;
+          shotBands(q, bx0, bx1, m, tmp);
+          for (const [lo, hi] of tmp) add(k, lo, hi);
+          next.push(q);
         }
         pcs = next;
       }
-    } else if (s.type === 'wave' || s.type === 'rain') {
-      let x = s.x, gy = s.gapY;
-      for (let k = 1; k <= steps; k++) {
-        x += s.vx;
-        if (s.type === 'rain') gy += s.drift;
-        if (x < bx1 && x + s.w > bx0) { add(k, -100, gy - s.gapH / 2 + m); add(k, gy + s.gapH / 2 - m, H + 100); }
-      }
-    } else if (s.type === 'column') {
-      for (let k = 1; k <= steps; k++) { const tt = s.t + k; if (tt >= s.warn - 1 && tt < s.warn + s.active + 1) add(k, s.y0 - m, s.y1 + m); }
-    } else if (s.type === 'laser') {
-      const l = laserLine(s), ya = l.oy + (bx0 - l.ox) * l.slope, yb = l.oy + (bx1 - l.ox) * l.slope;
-      for (let k = 1; k <= steps; k++) { const tt = s.t + k; if (tt >= s.warn - 1 && tt < s.warn + s.active + 1) add(k, Math.min(ya, yb) - s.thick / 2 - m, Math.max(ya, yb) + s.thick / 2 + m); }
     }
   }
   if (boss && game.state === 'BOSS_FIGHT') {
-    if (boss.queue.length) queueThreats(fut, steps, bx0, bx1, m);
+    if (boss.queue.length) queueThreats(fut);
     if (boss.plan) telegraphThreats(fut, steps, bx0, bx1, m);
   }
   return fut;
 }
 
-// Wand, die im Update k0 bei x0 startet und dort schon den ersten Schritt fliegt (wie fireAttack + updateShots)
-function wallThreat(fut, steps, bx0, bx1, m, k0, x0, vx, gy, drift, w) {
-  const half = CONFIG.WAVE_GAP / 2;
+// Wand, die im Update k0 bei x0 steht und ab dort fliegt (wie fireAttack + updateShots: im Startupdate
+// macht sie schon ihren ersten Schritt)
+function wallThreat(fut, steps, bx0, bx1, m, k0, x0, vx, gy, drift, w, half) {
+  half = half || CONFIG.WAVE_GAP / 2;
   let x = x0, g = gy;
   for (let k = k0; k <= steps; k++) {
     x += vx; g += drift;
@@ -155,36 +141,48 @@ function wallThreat(fut, steps, bx0, bx1, m, k0, x0, vx, gy, drift, w) {
 }
 
 // Wartende Teile des laufenden Angriffs: q.wait ist das Update, in dem sie starten
-function queueThreats(fut, steps, bx0, bx1, m) {
+function queueThreats(fut) {
   for (const q of boss.queue) {
-    if (q.kind === 'wall') wallThreat(fut, steps, bx0, bx1, m, q.wait, bossXAt(q.wait) - 20, -waveSpeedNow(), q.gapY, 0, 30);
-    else if (q.kind === 'tick') fut.dyn.push({ k: q.wait, make: (mm, ty) => [tickGear(mm, ty, 0)] });
+    if (q.kind === 'tick') fut.dyn.push({ k: q.wait, make: (mm, ty) => [tickGear(mm, ty, 0)] });
+    else if (q.kind === 'boulder') fut.dyn.push({ k: q.wait, make: (mm, ty) => [boulderOrb(mm, ty, 0)] });
   }
 }
 
-// Was die Vorwarnung schon verrät (Bahnen, Lücken, Takt), plant der Bot wie ein Mensch mit ein.
-// Der Angriff startet im Update delay.
+// Was die Vorwarnung schon verrät (Bahnen, Lücken, Takt, Ziel), plant der Bot wie ein Mensch mit ein.
+// Der Angriff startet im Update delay. Effekte mit festem Ziel stehen schon in shots.
 function telegraphThreats(fut, steps, bx0, bx1, m) {
-  const add = (k, lo, hi) => { if (k >= 1 && k <= steps) (fut[k] || (fut[k] = [])).push([lo, hi]); };
-  const pat = currentPattern(), plan = boss.plan, delay = Math.max(1, attackCooldown() - boss.timer);
-  const bxd = bossXAt(delay), mx = bxd + CONFIG.BOSS_MOUTH_DX, S = shotSpeed(), ws = waveSpeedNow();
-  const wallAt = (k0, x0, vx, gy, drift, w) => wallThreat(fut, steps, bx0, bx1, m, k0, x0, vx, gy, drift, w);
-  if (pat === 'salvo3' && plan.lanes) {
-    let x = mx;
-    for (let k = delay; k <= steps; k++) {
-      x -= S;
-      if (x + 13 > bx0 && x - 13 < bx1) for (const ly of plan.lanes) add(k, ly - 13 - m, ly + 13 + m);
-    }
-  } else if (pat === 'wave' && plan.gapY !== undefined) wallAt(delay, bxd - 20, -ws, plan.gapY, 0, 30);
-  else if (pat === 'twinwave' && plan.g1 !== undefined) {
-    wallAt(delay, bxd - 20, -ws, plan.g1, 0, 30);
-    wallAt(delay + twinDelay(), bossXAt(delay + twinDelay()) - 20, -ws, plan.g2, 0, 30);
-  } else if (pat === 'emberrain' && plan.gapY !== undefined) wallAt(delay, bxd - 16, -rainSpeed(), plan.gapY, plan.drift || 0.6, 46);
-  else if (pat === 'petal') fut.dyn.push({ k: delay, make: (mm, ty) => [petalOrb(mm, ty, plan.dir, 0)] });
-  else if (pat === 'zigzag') fut.dyn.push({ k: delay, make: (mm, ty) => [zigOrb(mm, ty, plan.dir, 0)] });
-  else if (pat === 'bounce') fut.dyn.push({ k: delay, make: (mm, ty) => [bounceOrb(mm, ty, 0)] });
-  else if (pat === 'converge') fut.dyn.push({ k: delay, make: (mm, ty) => convergeOrbs(mm, ty, 0) });
-  else if (pat === 'ticktock') for (let i = 0; i < 3; i++) fut.dyn.push({ k: delay + i * TICK.gap, make: (mm, ty) => [tickGear(mm, ty, 0)] });
+  const pat = currentPattern(), plan = boss.plan, cd = attackCooldown(pat), delay = Math.max(1, cd - boss.timer);
+  const bxd = bossXAt(delay), ws = waveSpeedNow();
+  const wallAt = (x0, vx, gy, drift, w, half) => wallThreat(fut, steps, bx0, bx1, m, delay, x0, vx, gy, drift, w, half);
+  const dyn = (make, ky) => fut.dyn.push({ k: delay, ky, make });
+  switch (pat) {
+    case 'aimed': dyn((mm, ty) => [aimedOrb(mm, ty, shotSpeed(), 12, 0)]); break;
+    case 'blossom': dyn((mm, ty) => [blossomOrb(mm, ty, plan.dir, 0)]); break;
+    case 'sting':
+      if (plan.lockY !== undefined) dyn(mm => [stingOrb(mm, plan.lockY, 0)]);
+      else dyn((mm, ty) => [stingOrb(mm, ty, 0)], cd - STING.lock - boss.timer);
+      break;
+    case 'cloudpop': dyn((mm, ty) => [bubbleOrb(mm, ty, 0)]); break;
+    case 'shells': dyn((mm, ty) => shellPair(mm, ty, 0)); break;
+    case 'lure': dyn(mm => [baitOrb(mm, plan.lureY, 0)]); break;
+    case 'icefall': dyn((mm, ty) => [iceShard(mm, ty, 0)]); break;
+    case 'diverge': dyn((mm, ty) => divergeOrbs(mm, ty, plan.side, 0)); break;
+    case 'spores': dyn((mm, ty) => sporeOrbs(mm, ty, 0)); break;
+    case 'zigzag': dyn((mm, ty) => [zigOrb(mm, ty, plan.dir, 0)]); break;
+    case 'wisps': dyn((mm, ty) => [wispRock(mm, ty, 0)]); break;
+    case 'converge': dyn((mm, ty) => convergeOrbs(mm, ty, 0)); break;
+    case 'boulders':
+      dyn((mm, ty) => [boulderOrb(mm, ty, 0)]);
+      fut.dyn.push({ k: delay + BOULDER.next, make: (mm, ty) => [boulderOrb(mm, ty, 0)] });
+      break;
+    case 'ticktock': for (let i = 0; i < 3; i++) fut.dyn.push({ k: delay + i * TICK.gap, make: (mm, ty) => [tickGear(mm, ty, 0)] }); break;
+    case 'ring': dyn(mm => [ringFx(mm, plan.yo, 0)]); break;
+    case 'split': dyn((mm, ty) => [splitOrb(mm, ty, 0)]); break;
+    case 'sandstorm': if (plan.g0 !== undefined) wallAt(bxd - 20, -ws, plan.g0, plan.drift, SAND.w); break;
+    case 'thunder': if (plan.gapY !== undefined) wallAt(bxd - 20, -ws * THUNDER.speed, plan.gapY, 0, 30); break;
+    case 'firewave': if (plan.gapY !== undefined) wallAt(bxd - 20, -ws * FIREWAVE.speed, plan.gapY, 0, FIREWAVE.w, FIREWAVE.gap / 2); break;
+    case 'emberrain': if (plan.gapY !== undefined) wallAt(bxd - 16, -rainSpeed(), plan.gapY, plan.drift || 0.6, 46); break;
+  }
 }
 
 // Bosskampf: Der Bot rechnet für eine Handvoll Zielhöhen voraus, wie sein eigener verzögerter
@@ -196,10 +194,11 @@ for (let y = 50; y <= GROUND_Y - 110; y += 26) BOT_TARGETS.push(y);
 function simulateTarget(ystar, fut, steps) {
   const P = PHYS[game.level], D = AT.delay, half = CONFIG.BIRD_H / 2, hist = botMem.hist, f0 = botMem.f;
   let y = birdCY(), vy = bird.vy, lf = botMem.lastFlap, minClear = Infinity;
-  const sim = [];
-  // Später startende, gezielte Geschosse: Boss wie in updateBossIdle mitrechnen (Maul beim Abschuss),
-  // Ziel ist die simulierte Höhe des Vogels im Abschuss-Update
-  const dyn = fut.dyn && fut.dyn.length ? fut.dyn : null, live = [], [bx0, bx1] = BOT_COL(), m = BOT_MARGIN;
+  const sim = [], simY = [], tmp = [];
+  // Später startende, gezielte Angriffe: Boss wie in updateBossIdle mitrechnen (Maul beim Abschuss),
+  // Ziel ist die simulierte Höhe des Vogels im Abschuss-Update (oder im Update ky)
+  const dyn = fut.dyn && fut.dyn.length ? fut.dyn : null, [bx0, bx1] = BOT_COL(), m = BOT_MARGIN;
+  let live = fut.live && fut.live.length ? fut.live.map(p => Object.assign({}, p)) : [];
   let bt = boss ? boss.t : 0, byy = boss ? boss.y : 0, bxx = boss ? boss.x : 0;
   const home = bossHomeX();
   for (let k = 0; k < steps; k++) {
@@ -212,7 +211,8 @@ function simulateTarget(ystar, fut, steps) {
     vy = Math.min(vy + P.GRAVITY, P.MAX_FALL_SPEED);
     y += vy;
     if (y - half < 0) { y = half; vy = CONFIG.CEILING_BOUNCE_VY; }
-    if (y + half - 3 >= GROUND_Y) return { hit: k + 1, clear: -1 };
+    if (y + half - CONFIG.BIRD_HITBOX_INSET >= GROUND_Y) return { hit: k + 1, clear: -1 };   // wie checkBossBounds
+    simY[k + 1] = y;
     const iv = fut[k + 1];
     if (iv) for (const [a, b] of iv) {
       if (y > a && y < b) return { hit: k + 1, clear: -1 };
@@ -223,18 +223,23 @@ function simulateTarget(ystar, fut, steps) {
       const tg = clamp(y - CONFIG.BOSS_MOUTH_DY + Math.sin(bt * 0.025 + boss.seed) * 46, CONFIG.BOSS_Y_MIN, CONFIG.BOSS_Y_MAX);
       byy += clamp((tg - byy) * 0.035, -CONFIG.BOSS_Y_SPEED, CONFIG.BOSS_Y_SPEED);
       bxx += (home - bxx) * 0.1;
-      for (const d of dyn) if (d.k === k + 1) for (const s of d.make({ x: bxx + CONFIG.BOSS_MOUTH_DX, y: byy + CONFIG.BOSS_MOUTH_DY }, y)) live.push(orbClone(s));
-      for (let i = live.length - 1; i >= 0; i--) {
-        const p = live[i];
-        p.t++;
-        orbMove(p);
-        if (orbGone(p)) { live.splice(i, 1); continue; }
-        if (p.x + p.r > bx0 && p.x - p.r < bx1) {
-          const a = p.y - p.r - m, b = p.y + p.r + m;
-          if (y > a && y < b) return { hit: k + 1, clear: -1 };
-          minClear = Math.min(minClear, y <= a ? a - y : y - b);
+      for (const d of dyn) if (d.k === k + 1) for (const s of d.make({ x: bxx + CONFIG.BOSS_MOUTH_DX, y: byy + CONFIG.BOSS_MOUTH_DY }, d.ky ? simY[d.ky] : y)) live.push(Object.assign({}, s));
+    }
+    if (live.length) {
+      const next = [];
+      for (const p of live) {
+        // neu gestartete Teile (t = 0) machen im Startupdate ihren ersten Schritt, wie im Spiel
+        for (const q of simAdvance(p, y)) {
+          tmp.length = 0;
+          shotBands(q, bx0, bx1, m, tmp);
+          for (const [a, b] of tmp) {
+            if (y > a && y < b) return { hit: k + 1, clear: -1 };
+            minClear = Math.min(minClear, y <= a ? a - y : y - b);
+          }
+          next.push(q);
         }
       }
+      live = next;
     }
   }
   return { hit: -1, clear: minClear };
@@ -258,12 +263,12 @@ function gapTargets(fut, steps) {
 }
 function bossTarget(cur) {
   // sofort neu planen, sobald ein Angriff hinzukommt oder sich aufteilt
-  const sig = shots.length + ':' + attacks.map(a => a.id).join(',') + ':' + (boss && boss.plan ? boss.n : '-');
+  const sig = shots.length + ':' + attacks.map(a => a.id).join(',') + ':' + (boss && boss.plan ? boss.n + (boss.plan.lockY !== undefined ? 'L' : '') : '-');
   if (sig !== botMem.sig) { botMem.sig = sig; botMem.next = 0; }
   if (--botMem.next > 0) return botMem.target;
   botMem.next = 4;
   const steps = 130, fut = predictThreats(steps);
-  if (!fut.some(Boolean) && !fut.dyn.length) { botMem.target = clamp(lerp(cur, 270, 0.3), 110, 400); return botMem.target; }
+  if (!fut.some(Boolean) && !fut.dyn.length && !fut.live.length) { botMem.target = clamp(lerp(cur, 270, 0.3), 110, 400); return botMem.target; }
   let best = botMem.target, bestScore = -Infinity;
   for (const y of BOT_TARGETS.concat([botMem.target], gapTargets(fut, steps))) {
     const r = simulateTarget(y, fut, steps);
