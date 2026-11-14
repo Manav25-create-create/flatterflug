@@ -67,6 +67,11 @@ st = await run(`const sb = pauseButtons().find(b => b.id === 'scrub'); onPress({
   onPress({ x: drawn.x + drawn.w / 2, y: drawn.y + drawn.h / 2 }, 'touch'); game.state + '|' + game.pipesPassed`);
 check('Spule: Tipp auf gezeichneten Knopf startet', /^LEVEL_INTRO\|4$/.test(String(st)), st);
 
+// 3c. Spule auch in Level 20 (50 Rohre, danach Bossfinale)
+st = await run(`progress.open.fill(true); progress.bot.fill(true); startFromMenu(19); for (let i = 0; i < 30; i++) update(); beginPlay(); setPaused(true); const sb = pauseButtons().find(b => b.id === 'scrub'); onPress({ x: sb.x + 10, y: sb.y + 10 }, 'mouse');
+  const a = game.state + '|' + scrub.pass.length; scrub.target = scrub.cur = scrub.n - 1; update(); startFromScrub(); a + '|' + game.state + '|' + (game.rush && game.rush.i)`);
+check('Spule in Level 20 bis zum Bossfinale', st === 'SCRUB|50|BOSS_INTRO|0', st);
+
 // 4. Fähigkeiten: Zeitlupe bremst Welt, nicht Vogel; schlechte Kugeln wirken
 await run(`progress.open[14] = true; startFromMenu(14); beginPlay(); 'ok'`);
 st = await run(`applyPickup('SLOW_MO'); for (let i = 0; i < 30; i++) update(); const sx0 = game.scroll; bird.vy = 0; const vy0 = bird.vy; update(); JSON.stringify({ ds: +(game.scroll - sx0).toFixed(2), dvy: +(bird.vy - vy0).toFixed(3), tf: abil.tf })`);

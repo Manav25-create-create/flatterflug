@@ -28397,7 +28397,7 @@ function drawScrubUI() {
   circle(cx, b.y, 5, C.accent);
   // Beschriftung und Startknopf
   const atBoss = scrubAtBoss() || j >= N;
-  const lab = atBoss ? 'Start beim Boss' : j === 0 ? 'Start am Anfang' : `Start nach Rohr ${j} von ${N}`;
+  const lab = atBoss ? (isRushLevel(scrub.li) ? 'Start beim Bossfinale' : 'Start beim Boss') : j === 0 ? 'Start am Anfang' : `Start nach Rohr ${j} von ${N}`;
   text(lab, 16, GROUND_Y - 37, FS.sm, CREAM, { align: 'left', stroke: rgba(INK, 0.75), lw: 4 });
   button(scrubStartBtn(), 'Hier starten', true, C);
 }
@@ -28668,7 +28668,7 @@ function defeatPanel() {
 }
 // Bot-Spule in der Pause: nur nach dem Passwort und nicht im Ansturm
 // Wer das Passwort einmal benutzt hat (auch nur für ein Level in v5), bekommt die Spule in jedem Level
-const pauseHasScrub = () => progress.bot.some(Boolean) && !isRushLevel(game.level) && game.state !== 'SCRUB';
+const pauseHasScrub = () => progress.bot.some(Boolean) && game.state !== 'SCRUB';
 const pausePanel = () => panelRect(288, pauseHasScrub() ? 300 : 252, 332);
 function pauseButtons() {
   const P = pausePanel(), bx = P.x + 24, bw = P.w - 48, list = [{ id: 'resume', x: bx, y: P.y + 86, w: bw, h: 46 }];
