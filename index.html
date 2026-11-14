@@ -106,6 +106,7 @@
 (() => {
 'use strict';
 
+const BUILD = { id: '6384461a', date: '14.11.2026' };
 // ============================================================
 // CONFIG: alle Tuning-Werte. Logische Höhe fest 600, logische Breite
 // passt sich dem Seitenverhältnis an (360 bis 1400, wählbar Hoch/Quer). Physik mit festem
@@ -28374,7 +28375,7 @@ function drawScrubUI() {
   iconButton(UI.back(), backIcon);
   text('Startpunkt wählen', W / 2, 26, FS.md, CREAM, { stroke: rgba(INK, 0.75), lw: 5 });
   const sub = wrapLines(`Level ${scrub.li + 1}: ${L.name}. Zieh an der Spule unten, der blasse Vogel fliegt den Weg im Zeitraffer. Tippen ins Bild spielt ab.`, W - 110, FS.xxs);
-  sub.slice(0, 2).forEach((l, i) => text(l, W / 2, 50 + i * 14, FS.xxs, rgba(CREAM, 0.85), { weight: 'normal', stroke: rgba(INK, 0.6), lw: 3 }));
+  sub.slice(0, 3).forEach((l, i) => text(l, W / 2, 50 + i * 14, FS.xxs, rgba(CREAM, 0.85), { weight: 'normal', stroke: rgba(INK, 0.6), lw: 3 }));
   // Leiste
   roundRectPath(b.x0 - 6, b.y - 7, b.x1 - b.x0 + 12, 14, 7);
   ctx.fillStyle = rgba(INK, 0.65);
@@ -29804,6 +29805,8 @@ function drawMainMenu() {
   }
   const hint = wrapLines('Tippen, Klick oder Leertaste: flattern. Esc oder P: Pause. M: Musik', W - 40, FS.xxs);
   hint.forEach((l, i) => text(l, W / 2, 516 + i * 14, FS.xxs, rgba(CREAM, 0.7), { weight: 'normal', stroke: rgba(INK, 0.5), lw: 3 }));
+  // Versionsstempel: so sieht man am Handy, ob das neueste Update geladen ist
+  text(`Version ${BUILD.date} (${BUILD.id})`, 16, GROUND_Y + 29, FS.xxs, rgba(CREAM, 0.6), { align: 'left', weight: 'normal', stroke: rgba(INK, 0.5), lw: 3 });
 }
 function drawMainMenuDynamic() {
   const C = COLORS[game.menuBg.cur], list = menuButtons(), sel = list[clamp(game.sel, 0, list.length - 1)];
@@ -30015,6 +30018,34 @@ function boot(data) {
   focusCanvas();
   requestAnimationFrame(loop);
   initCloudSave();
+  checkForUpdate();
+}
+
+// Neue Version auf GitHub Pages: Handys und Apps auf dem Home-Bildschirm zeigen oft noch eine alte Kopie.
+// Beim Start wird die kleine version.json am Cache vorbei geladen. Ist sie neuer als dieser Code, wird die
+// Seite einmal frisch geladen (nur im Menü, damit kein Lauf verloren geht). Spielstände liegen im Browser
+// und bleiben dabei erhalten. Offline oder im Claude-Artefakt passiert nichts.
+let UPDATE_HOST = /github\.io$/;
+async function checkForUpdate() {
+  try {
+    if (!/^https?:$/.test(location.protocol) || !UPDATE_HOST.test(location.hostname)) return;
+    const base = location.href.split('#')[0].split('?')[0];
+    const r = await fetch(base.replace(/[^/]*$/, '') + 'version.json?t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return;
+    const v = await r.json();
+    if (!v || typeof v.build !== 'string' || !/^[0-9a-f]{8}$/.test(v.build) || v.build === BUILD.id) return;
+    const key = 'flatterflug-update-versuch';
+    let tried = null;
+    try { tried = sessionStorage.getItem(key); } catch (e) { /* ohne sessionStorage */ }
+    if (tried === v.build || !MENU_STATES.has(game.state) || game.paused) {
+      showToast('Neue Version online: Seite ganz schließen und neu öffnen', 300);
+      return;
+    }
+    try { sessionStorage.setItem(key, v.build); } catch (e) { /* ohne Schleifenschutz nur Hinweis */ showToast('Neue Version online: Seite ganz schließen und neu öffnen', 300); return; }
+    // Seite im Browser-Cache erneuern, dann mit neuer Adresse laden (andere Adresse, also sicher frisch)
+    try { await fetch(base, { cache: 'reload' }); } catch (e) { /* weiter */ }
+    location.replace(base + '?v=' + v.build);
+  } catch (e) { /* offline oder blockiert: einfach weiterspielen */ }
 }
 
 // ============================================================

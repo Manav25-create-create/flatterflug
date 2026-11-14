@@ -8,6 +8,10 @@ Live: https://manav25-create-create.github.io/flatterflug/ (GitHub Pages aus `ma
   - `out/artifact.html`: Fragment für ein Claude-Artefakt.
   - `out/test.html`: Testfassung mit `window.__ff` (get/set/run im Spielkontext).
 - Reihenfolge der Bausteine steht in `build.py` (PARTS). `z_boot.js` muss zuletzt kommen (Boot nach allen Konstanten).
+- Versionsstempel: `build.py` setzt `const BUILD = { id, date }` (id = Hash des Codes) und schreibt `version.json`
+  neben `index.html`. Das Menü zeigt „Version <Datum> (<id>)“. `checkForUpdate()` lädt beim Start auf github.io die
+  version.json am Cache vorbei; ist sie neuer, lädt die Seite im Menü einmal mit `?v=<id>` neu (Schleifenschutz über
+  sessionStorage `flatterflug-update-versuch`), im Spiel nur ein Hinweis. version.json immer mit hochladen.
 - Nur Canvas 2D und Vanilla JS. Keine Bilder, Audiodateien, Bibliotheken, CDNs oder Webfonts. Läuft offline.
 
 ## Wichtige Stellen
@@ -15,7 +19,8 @@ Live: https://manav25-create-create.github.io/flatterflug/ (GitHub Pages aus `ma
   - Hindernisse: ab Level 4 auf und ab, ab 8 Wind (Rückenwind schneller, Gegenwind langsamer), ab 12 Schieben
     (oberes und unteres Rohr fahren seitlich gegeneinander), ab 16 kippend, ab 20 Dunkelheit. Im Einführungslevel
     allein, danach kombiniert. Ab 14 zusätzlich Lücken, die sich zusammenziehen (nie unter 140 px).
-  - Passwort "Bot": alle Level frei; Bot-Spule danach in der Pause ("Startpunkt spulen").
+  - Passwort "Bot": alle Level frei; Bot-Spule danach in der Pause ("Startpunkt spulen"), in allen 20 Leveln,
+    sobald das Passwort einmal benutzt wurde (`progress.bot.some`). In Level 20 endet die Spule beim Bossfinale.
   - Rohre: 10 + 2·(n−1), Level 20: 50. Boss-Leben: Level 1 = 1, +1 in jedem Level ohne neues Hindernis.
   - Level 20 ist der Ansturm der 19 Bosse (je 2 Treffer), Checkpoints nach Boss 7 und 13 (nicht auf Schwer).
 - `c_world.js`: Vogel und Rohre. Alle Rohre eines Versuchs stehen im Layout (`makeLayout`, Seed).
