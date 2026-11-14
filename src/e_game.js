@@ -917,7 +917,8 @@ function updateScrub() {
 
 // Spule: Leiste unten im Bodenstreifen, Knopf "Hier starten" darüber
 function scrubBar() { const x0 = 32, x1 = W - 32; return { x0, x1, y: GROUND_Y + 28, hit: { x: x0 - 16, y: GROUND_Y + 4, w: x1 - x0 + 32, h: 52 } }; }
-const scrubStartBtn = () => { const w = Math.min(190, W - 40); return { id: 'start', x: W - w - 16, y: GROUND_Y - 58, w, h: 42 }; };
+// Auf schmalen Bildschirmen (Handy) sitzt der Knopf über der Beschriftung. Zeichnung und Tippfläche nutzen dieselbe Lage.
+const scrubStartBtn = () => { const w = Math.min(190, W - 40), x = W - w - 16; return { id: 'start', x, y: x > 16 + 190 ? GROUND_Y - 58 : GROUND_Y - 108, w, h: 42 }; };
 const scrubFrameAtX = x => { const b = scrubBar(); return clamp((x - b.x0) / (b.x1 - b.x0), 0, 1) * (scrub.n - 1); };
 const scrubXAt = f => { const b = scrubBar(); return b.x0 + (b.x1 - b.x0) * f / Math.max(1, scrub.n - 1); };
 
@@ -1000,9 +1001,7 @@ function drawScrubUI() {
   const atBoss = scrubAtBoss() || j >= N;
   const lab = atBoss ? 'Start beim Boss' : j === 0 ? 'Start am Anfang' : `Start nach Rohr ${j} von ${N}`;
   text(lab, 16, GROUND_Y - 37, FS.sm, CREAM, { align: 'left', stroke: rgba(INK, 0.75), lw: 4 });
-  const sb = scrubStartBtn();
-  if (sb.x > 16 + 190) button(sb, 'Hier starten', true, C);
-  else { sb.y = GROUND_Y - 108; button(sb, 'Hier starten', true, C); }
+  button(scrubStartBtn(), 'Hier starten', true, C);
 }
 
 // ============================================================
@@ -1270,7 +1269,8 @@ function defeatPanel() {
   return panelRect(340, h, 300);
 }
 // Bot-Spule in der Pause: nur nach dem Passwort und nicht im Ansturm
-const pauseHasScrub = () => !!progress.bot[game.level] && !isRushLevel(game.level) && game.state !== 'SCRUB';
+// Wer das Passwort einmal benutzt hat (auch nur für ein Level in v5), bekommt die Spule in jedem Level
+const pauseHasScrub = () => progress.bot.some(Boolean) && !isRushLevel(game.level) && game.state !== 'SCRUB';
 const pausePanel = () => panelRect(288, pauseHasScrub() ? 300 : 252, 332);
 function pauseButtons() {
   const P = pausePanel(), bx = P.x + 24, bw = P.w - 48, list = [{ id: 'resume', x: bx, y: P.y + 86, w: bw, h: 46 }];
